@@ -121,10 +121,10 @@ const fileFilter: import('multer').Options['fileFilter'] = (req, file, cb) => {
   const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/avif'];
 
   if (allowed.includes(file.mimetype)) {
-    return cb(null, true);           // ✅ aceptar
+    return cb(null, true);           
   }
 
-  // ❌ rechazar (usa UN SOLO argumento con el error)
+ 
   const err = new Error('Invalid image type');
   return cb(err as any);
 };
