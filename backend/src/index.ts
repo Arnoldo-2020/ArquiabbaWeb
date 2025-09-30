@@ -10,6 +10,10 @@ import fs from 'node:fs';
 import bcrypt from 'bcrypt';
 import { v4 as uuid } from 'uuid';
 
+import sharp from 'sharp';
+import { v2 as cloudinary, type UploadApiResponse } from 'cloudinary';
+import { randomUUID } from 'node:crypto';
+
 import { prisma } from './db';
 import { createProductSchema, updateProductSchema } from './validation';
 
@@ -104,14 +108,32 @@ function requireRole(role: 'ADMIN' | 'USER') {
 }
 
 // ---------- Multer (disk storage) ----------
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '';
-    cb(null, `${uuid()}${ext}`);
-  },
+// const storage = multer.diskStorage({
+//   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+//   filename: (_req, file, cb) => {
+//     const ext = path.extname(file.originalname) || '';
+//     cb(null, `${uuid()}${ext}`);
+//   },
+// });
+// const upload = multer({ storage });
+
+const fileFilter: import('multer').Options['fileFilter'] = (req, file, cb) => {
+  const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/avif'];
+
+  if (allowed.includes(file.mimetype)) {
+    return cb(null, true);           // ✅ aceptar
+  }
+
+  // ❌ rechazar (usa UN SOLO argumento con el error)
+  const err = new Error('Invalid image type');
+  return cb(err as any);
+};
+
+export const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter,
 });
-const upload = multer({ storage });
 
 // ---------- Health ----------
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -172,74 +194,126 @@ app.get('/api/products/:id', async (req, res) => {
 
 // ---------- PRODUCTS (mutaciones solo ADMIN) ----------
 
-// Crear (multipart: campos + image o imageUrl)
-app.post('/api/products', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req, res) => {
+app.post('/api/products', upload.single('image'), async (req: Request, res: Response) => {
   try {
-    const parsed = createProductSchema.parse(req.body);
+    // ... valida req.body con tu zod schema
+    let imageUrl: string | undefined = (req.body.imageUrl as string | undefined)?.trim() || undefined;
 
-    let imageUrl: string | undefined =
-      (req.body.imageUrl as string | undefined) ?? undefined;
-    if (req.file) imageUrl = `/uploads/${req.file.filename}`;
+    if (req.file) {
+      // 1) Procesa la imagen en memoria con sharp
+      const buf = await sharp(req.file.buffer)
+        .rotate()
+        .resize({ width: 1600, withoutEnlargement: true })
+        .toFormat('webp', { quality: 82 })
+        .toBuffer();
+
+      const filename = randomUUID();
+
+      // 2) Sube a Cloudinary usando upload_stream (con tipos correctos)
+      const url: string = await new Promise<string>((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'products',
+            public_id: filename,
+            resource_type: 'image',
+            overwrite: true,
+          },
+          (err?: Error, result?: UploadApiResponse) => {
+            if (err) return reject(err);
+            if (!result || !result.secure_url) {
+              return reject(new Error('Upload failed'));
+            }
+            resolve(result.secure_url);
+          }
+        );
+        stream.end(buf);
+      });
+
+      imageUrl = url;
+    }
 
     if (!imageUrl) {
-      if (req.file) fs.unlink(path.join(UPLOAD_DIR, req.file.filename), () => {});
-      return res.status(400).json({ error: 'Image is required (image file or imageUrl)' });
+      return res.status(400).json({ error: 'Image is required (file or imageUrl)' });
     }
 
-    const created = await prisma.product.create({
-      data: {
-        name: parsed.name,
-        description: parsed.description,
-        price: parsed.price, // Float en SQLite
-        imageUrl,
-      },
-    });
-    res.status(201).json(created);
-  } catch (err: any) {
-    return res.status(400).json({ error: err?.message ?? 'Invalid data' });
+    // ... crea el producto en Prisma con imageUrl
+    // const created = await prisma.product.create({ data: { name: ..., imageUrl, ... } });
+    // res.status(201).json(created);
+    res.status(201).json({ ok: true, imageUrl }); // <-- temporal, si quieres probar
+  } catch (e: any) {
+    console.error(e);
+    res.status(400).json({ error: e?.message || 'Bad request' });
   }
 });
+
+// Crear (multipart: campos + image o imageUrl)
+// app.post('/api/products', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req, res) => {
+//   try {
+//     const parsed = createProductSchema.parse(req.body);
+
+//     let imageUrl: string | undefined =
+//       (req.body.imageUrl as string | undefined) ?? undefined;
+//     if (req.file) imageUrl = `/uploads/${req.file.filename}`;
+
+//     if (!imageUrl) {
+//       if (req.file) fs.unlink(path.join(UPLOAD_DIR, req.file.filename), () => {});
+//       return res.status(400).json({ error: 'Image is required (image file or imageUrl)' });
+//     }
+
+//     const created = await prisma.product.create({
+//       data: {
+//         name: parsed.name,
+//         description: parsed.description,
+//         price: parsed.price, // Float en SQLite
+//         imageUrl,
+//       },
+//     });
+//     res.status(201).json(created);
+//   } catch (err: any) {
+//     return res.status(400).json({ error: err?.message ?? 'Invalid data' });
+//   }
+// });
 
 // Actualizar (multipart opcional)
-app.put('/api/products/:id', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req, res) => {
-  try {
-    const parsed = updateProductSchema.parse(req.body);
-    const id = req.params.id;
+// app.put('/api/products/:id', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req, res) => {
+//   try {
+//     const parsed = updateProductSchema.parse(req.body);
+//     const id = req.params.id;
 
-    const current = await prisma.product.findUnique({ where: { id } });
-    if (!current) return res.status(404).json({ error: 'Not found' });
+//     const current = await prisma.product.findUnique({ where: { id } });
+//     if (!current) return res.status(404).json({ error: 'Not found' });
 
-    let imageUrl: string | undefined = current.imageUrl;
+//     let imageUrl: string | undefined = current.imageUrl;
 
-    // prioridad: archivo nuevo > imageUrl texto > conservar actual
-    if (req.file) {
-      imageUrl = `/uploads/${req.file.filename}`;
-      if (current.imageUrl?.startsWith('/uploads/')) {
-        const oldPath = path.join(UPLOAD_DIR, path.basename(current.imageUrl));
-        fs.unlink(oldPath, () => {});
-      }
-    } else if (typeof req.body.imageUrl === 'string' && req.body.imageUrl.trim() !== '') {
-      imageUrl = req.body.imageUrl.trim();
-      if (current.imageUrl?.startsWith('/uploads/')) {
-        const oldPath = path.join(UPLOAD_DIR, path.basename(current.imageUrl));
-        fs.unlink(oldPath, () => {});
-      }
-    }
+//     // prioridad: archivo nuevo > imageUrl texto > conservar actual
+//     if (req.file) {
+//       imageUrl = `/uploads/${req.file.filename}`;
+//       if (current.imageUrl?.startsWith('/uploads/')) {
+//         const oldPath = path.join(UPLOAD_DIR, path.basename(current.imageUrl));
+//         fs.unlink(oldPath, () => {});
+//       }
+//     } else if (typeof req.body.imageUrl === 'string' && req.body.imageUrl.trim() !== '') {
+//       imageUrl = req.body.imageUrl.trim();
+//       if (current.imageUrl?.startsWith('/uploads/')) {
+//         const oldPath = path.join(UPLOAD_DIR, path.basename(current.imageUrl));
+//         fs.unlink(oldPath, () => {});
+//       }
+//     }
 
-    const updated = await prisma.product.update({
-      where: { id },
-      data: {
-        name: parsed.name ?? current.name,
-        description: parsed.description ?? current.description,
-        price: parsed.price ?? current.price,
-        imageUrl,
-      },
-    });
-    res.json(updated);
-  } catch (err: any) {
-    return res.status(400).json({ error: err?.message ?? 'Invalid data' });
-  }
-});
+//     const updated = await prisma.product.update({
+//       where: { id },
+//       data: {
+//         name: parsed.name ?? current.name,
+//         description: parsed.description ?? current.description,
+//         price: parsed.price ?? current.price,
+//         imageUrl,
+//       },
+//     });
+//     res.json(updated);
+//   } catch (err: any) {
+//     return res.status(400).json({ error: err?.message ?? 'Invalid data' });
+//   }
+// });
 
 // Eliminar
 app.delete('/api/products/:id', requireAuth, requireRole('ADMIN'), async (req, res) => {
