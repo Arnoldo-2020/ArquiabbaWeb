@@ -1,0 +1,35 @@
+<ion-content class="ion-padding">
+    <h2>{{ isEdit ? 'Edit product' : 'New product' }}</h2>
+
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <ion-list>
+        <ion-item>
+          <ion-input label="Name" formControlName="name"></ion-input>
+        </ion-item>
+
+        <ion-item>
+          <ion-textarea label="Description" formControlName="description" autoGrow="true"></ion-textarea>
+        </ion-item>
+
+        <ion-item>
+          <ion-input label="Price" type="number" step="0.01" formControlName="price"></ion-input>
+        </ion-item>
+
+        <ion-item>
+          <input type="file" accept="image/*" (change)="onFile($event)" />
+        </ion-item>
+
+        <ion-item>
+          <ion-input label="Image URL (optional)" formControlName="imageUrl"></ion-input>
+        </ion-item>
+      </ion-list>
+
+      <div *ngIf="preview" style="margin:12px 0;">
+        <ion-img [src]="preview" style="max-height:240px;object-fit:contain"></ion-img>
+      </div>
+
+      <ion-button expand="block" type="submit" [disabled]="form.invalid || loading">
+        {{ isEdit ? 'Update' : 'Create' }}
+      </ion-button>
+    </form>
+  </ion-content>

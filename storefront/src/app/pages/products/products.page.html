@@ -1,0 +1,24 @@
+<p style="text-align:center;opacity:.6;padding:8px">Products page</p>
+  <ion-content [fullscreen]="true">
+    <ion-refresher slot="fixed" (ionRefresh)="refresh($event)">
+      <ion-refresher-content></ion-refresher-content>
+    </ion-refresher>
+
+    <ion-grid fixed>
+      <ion-row *ngIf="loading()">
+        <ion-col size="12" size-sm="6" size-md="4" size-lg="3" size-xl="2" *ngFor="let i of skeletons">
+          <ion-skeleton-text style="width:100%;height:260px;border-radius:16px;"></ion-skeleton-text>
+        </ion-col>
+      </ion-row>
+
+      <ion-row *ngIf="!loading() && products().length === 0">
+        <ion-col size="12"><p style="text-align:center;opacity:.7;padding:1rem;">No products yet.</p></ion-col>
+      </ion-row>
+
+      <ion-row *ngIf="!loading()">
+        <ion-col size="12" size-sm="6" size-md="4" size-lg="3" size-xl="2" *ngFor="let p of products()">
+          <app-product-card [product]="p"></app-product-card>
+        </ion-col>
+      </ion-row>
+    </ion-grid>
+  </ion-content>

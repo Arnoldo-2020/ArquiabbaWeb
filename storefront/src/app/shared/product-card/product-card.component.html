@@ -1,0 +1,21 @@
+<ion-card class="card" style="cursor:pointer" (click)="openDetail()">
+    <div class="image-wrapper">
+      <ion-img [src]="product.imageUrl" [alt]="product.name"></ion-img>
+    </div>
+
+    <ion-card-header>
+      <ion-card-title class="name">{{ product.name }}</ion-card-title>
+    </ion-card-header>
+
+    <ion-card-content>
+      <p class="price">€{{ product.price.toFixed(2) }}</p>
+
+      <!-- CTA: Añadir al carrito -->
+      <ion-button *ngIf="showCTA"
+                  expand="block"
+                  shape="round"
+                  (click)="addToCart($event)">
+        Añadir al carrito
+      </ion-button>
+    </ion-card-content>
+  </ion-card>

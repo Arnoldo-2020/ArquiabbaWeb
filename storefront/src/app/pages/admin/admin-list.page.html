@@ -1,0 +1,18 @@
+<ion-content class="ion-padding">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2>Products (admin)</h2>
+      <ion-button fill="clear" color="medium" (click)="logout()">Logout</ion-button>
+    </div>
+    <ion-button (click)="new()" shape="round">New product</ion-button>
+
+    <ion-list>
+      <ion-item *ngFor="let p of items">
+        <ion-label>
+          <div><strong>{{ p.name }}</strong></div>
+          <div>€{{ p.price.toFixed(2) }}</div>
+        </ion-label>
+        <ion-button (click)="edit(p.id)">Edit</ion-button>
+        <ion-button color="danger" (click)="del(p.id)">Delete</ion-button>
+      </ion-item>
+    </ion-list>
+  </ion-content>

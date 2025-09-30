@@ -1,0 +1,31 @@
+<ion-content class="ion-padding">
+  <h1 class="page-title">Carrito</h1>
+    <p *ngIf="cart.items().length===0">Tu carrito está vacío.</p>
+
+    <ion-list *ngIf="cart.items().length>0">
+      <ion-item *ngFor="let it of cart.items()">
+        <ion-img [src]="it.product.imageUrl" style="width:64px;height:64px;object-fit:cover;margin-right:12px"></ion-img>
+        <ion-label>
+          <div><strong>{{ it.product.name }}</strong></div>
+          <div>€{{ (it.product.price*it.quantity).toFixed(2) }}</div>
+        </ion-label>
+
+        <ion-input
+          type="number"
+          [value]="it.quantity"
+          (ionInput)="onQty(it.product.id, $event.detail.value)"
+          style="max-width:80px">
+        </ion-input>
+
+        <ion-button color="danger" (click)="remove(it.product.id)">Quitar</ion-button>
+      </ion-item>
+    </ion-list>
+
+    <div *ngIf="cart.items().length>0" style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+      <h3>Total: €{{ cart.total().toFixed(2) }}</h3>
+    </div>
+
+    <div *ngIf="cart.items().length>0" style="margin-top:16px">
+      <div id="paypal-buttons"></div>
+    </div>
+  </ion-content>

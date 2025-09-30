@@ -1,0 +1,35 @@
+.ig-footer {
+  --background: #ffffff; /* color del toolbar */
+  border-top: 1px solid rgba(0,0,0,0.06);
+
+  .ig-cta {
+    margin: 0 auto;                /* centrar */
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    ion-icon {
+      font-size: 1.4rem;
+    }
+
+    ion-text {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+  }
+}
+
+/* Opcional: en pantallas grandes, un poco más de aire */
+@media (min-width: 768px) {
+  .ig-footer .ig-cta {
+    gap: 0.6rem;
+    ion-icon { font-size: 1.6rem; }
+    ion-text { font-size: 1rem; }
+  }
+}
+
+.page-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
