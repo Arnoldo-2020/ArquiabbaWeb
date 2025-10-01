@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -10,8 +11,10 @@ import fs from 'node:fs';
 import bcrypt from 'bcrypt';
 import { v4 as uuid } from 'uuid';
 
+
+
 import sharp from 'sharp';
-import { v2 as cloudinary, type UploadApiResponse } from 'cloudinary';
+import cloudinary, { type UploadApiResponse } from './cloudinary';
 import { randomUUID } from 'node:crypto';
 
 import { prisma } from './db';
@@ -29,6 +32,15 @@ const PAYPAL_BASE = PAYPAL_MODE === 'live'
   : 'https://api-m.sandbox.paypal.com';
 
 const CURRENCY = process.env.CURRENCY || 'EUR';
+
+// Desactivar ETag + caché agresiva para respuestas JSON
+app.set('etag', false);
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
 // Consigue un access token OAuth2 de PayPal
 async function getPayPalAccessToken() {
@@ -183,6 +195,7 @@ app.get('/api/auth/me', requireAuth, async (req: any, res) => {
 // ---------- PRODUCTS (GET públicos) ----------
 app.get('/api/products', async (_req, res) => {
   const items = await prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
+  console.log('LIST COUNT', items.length);
   res.json(items);
 });
 
@@ -194,55 +207,115 @@ app.get('/api/products/:id', async (req, res) => {
 
 // ---------- PRODUCTS (mutaciones solo ADMIN) ----------
 
+// app.post('/api/products', upload.single('image'), async (req: Request, res: Response) => {
+//   try {
+//     // ... valida req.body con tu zod schema
+//     let imageUrl: string | undefined = (req.body.imageUrl as string | undefined)?.trim() || undefined;
+
+//     if (req.file) {
+//       // 1) Procesa la imagen en memoria con sharp
+//       const buf = await sharp(req.file.buffer)
+//         .rotate()
+//         .resize({ width: 1600, withoutEnlargement: true })
+//         .toFormat('webp', { quality: 82 })
+//         .toBuffer();
+
+//       const filename = randomUUID();
+
+//       // 2) Sube a Cloudinary usando upload_stream (con tipos correctos)
+//       const url: string = await new Promise<string>((resolve, reject) => {
+//         const stream = cloudinary.uploader.upload_stream(
+//           {
+//             folder: 'products',
+//             public_id: filename,
+//             resource_type: 'image',
+//             overwrite: true,
+//           },
+//           (err?: Error, result?: UploadApiResponse) => {
+//             if (err) return reject(err);
+//             if (!result || !result.secure_url) {
+//               return reject(new Error('Upload failed'));
+//             }
+//             resolve(result.secure_url);
+//           }
+//         );
+//         stream.end(buf);
+//       });
+
+//       imageUrl = url;
+//     }
+
+//     if (!imageUrl) {
+//       return res.status(400).json({ error: 'Image is required (file or imageUrl)' });
+//     }
+
+//     // ... crea el producto en Prisma con imageUrl
+//     const created = await prisma.product.create({ data: { name: ..., imageUrl, ... } });
+//     console.log('CREATED PRODUCT', created.id);
+//     res.status(201).json(created);
+//     res.status(201).json({ ok: true, imageUrl }); // <-- temporal, si quieres probar
+//   } catch (e: any) {
+//     console.error(e);
+//     res.status(400).json({ error: e?.message || 'Bad request' });
+//   }
+// });
+
+
+
 app.post('/api/products', upload.single('image'), async (req: Request, res: Response) => {
   try {
-    // ... valida req.body con tu zod schema
-    let imageUrl: string | undefined = (req.body.imageUrl as string | undefined)?.trim() || undefined;
+    const { name, description = '', price, imageUrl } = req.body as {
+      name?: string; description?: string; price?: string | number; imageUrl?: string;
+    };
+
+    if (!name || price === undefined || price === null) {
+      return res.status(400).json({ error: 'name and price are required' });
+    }
+
+    let url: string | null = null;
 
     if (req.file) {
-      // 1) Procesa la imagen en memoria con sharp
+      // 1) Procesa la imagen
       const buf = await sharp(req.file.buffer)
         .rotate()
-        .resize({ width: 1600, withoutEnlargement: true })
-        .toFormat('webp', { quality: 82 })
+        .resize({ width: 1200, withoutEnlargement: true })
+        .webp({ quality: 85 })
         .toBuffer();
 
+      // 2) Sube a Cloudinary
       const filename = randomUUID();
-
-      // 2) Sube a Cloudinary usando upload_stream (con tipos correctos)
-      const url: string = await new Promise<string>((resolve, reject) => {
+      url = await new Promise<string>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: 'products',
-            public_id: filename,
-            resource_type: 'image',
-            overwrite: true,
-          },
-          (err?: Error, result?: UploadApiResponse) => {
-            if (err) return reject(err);
-            if (!result || !result.secure_url) {
-              return reject(new Error('Upload failed'));
-            }
+          { folder: 'products', public_id: filename, overwrite: true, resource_type: 'image' },
+          (err, result?: UploadApiResponse) => {
+            if (err || !result?.secure_url) return reject(err ?? new Error('Upload failed'));
             resolve(result.secure_url);
           }
         );
         stream.end(buf);
       });
-
-      imageUrl = url;
+    } else if (imageUrl) {
+      // URL directa opcional
+      url = imageUrl;
+    } else {
+      return res.status(400).json({ error: 'image is required (file or imageUrl)' });
     }
 
-    if (!imageUrl) {
-      return res.status(400).json({ error: 'Image is required (file or imageUrl)' });
-    }
+    // 3) Crea en DB
+    const created = await prisma.product.create({
+      data: {
+        name,
+        description,
+        price: Number(price),
+        imageUrl: url,
+      },
+    });
 
-    // ... crea el producto en Prisma con imageUrl
-    // const created = await prisma.product.create({ data: { name: ..., imageUrl, ... } });
-    // res.status(201).json(created);
-    res.status(201).json({ ok: true, imageUrl }); // <-- temporal, si quieres probar
+    console.log('CREATED PRODUCT', created.id);
+    return res.status(201).json(created);
   } catch (e: any) {
     console.error(e);
-    res.status(400).json({ error: e?.message || 'Bad request' });
+    return res.status(400).json({ error: e?.message ?? 'bad request' });
   }
 });
 

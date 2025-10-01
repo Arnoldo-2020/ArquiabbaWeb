@@ -1,16 +1,24 @@
-import { prisma } from './db';
-import bcrypt from 'bcrypt';      
+import { prisma } from './db';          
+import bcrypt from 'bcryptjs';          
 
+type UserCreate = Parameters<typeof prisma.user.create>[0]['data'];
 
 async function up(email: string, pass: string) {
-  const exists = await prisma.user.findUnique({ where: { email } });
-  if (exists) return;
-
   const passwordHash = await bcrypt.hash(pass, 12);
-  await prisma.user.create({
-    data: { email, passwordHash, role: 'ADMIN' },
+
+  
+  const data: UserCreate = {
+    email,
+    passwordHash,
+  } as any;
+
+  await prisma.user.upsert({
+    where: { email },
+    update: {}, 
+    create: data,
   });
-  console.log('Admin creado:', email);
+
+  console.log('Admin OK:', email);
 }
 
 (async () => {
