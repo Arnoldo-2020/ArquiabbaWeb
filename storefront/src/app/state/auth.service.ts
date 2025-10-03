@@ -2,6 +2,12 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from 'src/environments/environment.prod';
 
+export type UserMe = {
+  id: string;
+  email: string;
+  role: 'ADMIN' | 'USER';
+};
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private http = inject(HttpClient);
@@ -24,9 +30,7 @@ export class AuthService {
   }
 
   me() {
-    return this.http.get(
-      `${this.base}/auth/me`,
-      { withCredentials: true }
-    );
+    return this.http.get<UserMe>(`${this.base}/auth/me`, { withCredentials: true });
   }
+
 }
