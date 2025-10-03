@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiBase: 'https://arquibabbaweb.onrender.com'
+  API_URL: 'https://arquibabbaweb.onrender.com'
 };
