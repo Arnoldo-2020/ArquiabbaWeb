@@ -68,19 +68,32 @@ async function getPayPalAccessToken() {
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
 // ---------- Middlewares base ----------
-app.use(cors({ origin: true }));
+//app.use(cors({ origin: true }));
+app.use(cors({
+  origin: [
+    'http://localhost:4200',
+    'https://arquibabba-web.vercel.app'
+  ],
+  credentials: true
+}));
 app.use(helmet());
 app.use(rateLimit({ windowMs: 60_000, max: 120 }));
 app.use(cookieParser());
 app.use(
+  // cookieSession({
+  //   name: 'sid',
+  //   secret: process.env.SESSION_SECRET || 'change-me',
+  //   httpOnly: true,
+  //   sameSite: 'lax',
+  //   secure: false, // EN PRODUCCIÓN: true (HTTPS)
+  //   path: '/',
+  // })
   cookieSession({
-    name: 'sid',
-    secret: process.env.SESSION_SECRET || 'change-me',
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: false, // EN PRODUCCIÓN: true (HTTPS)
-    path: '/',
-  })
+  name: 'session',
+  secret: process.env.SESSION_SECRET!,
+  sameSite: 'none',
+  secure: true
+})
 );
 app.use(express.json());
 
