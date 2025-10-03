@@ -33,6 +33,25 @@ const PAYPAL_BASE = PAYPAL_MODE === 'live'
 
 const CURRENCY = process.env.CURRENCY || 'EUR';
 
+const ALLOWED_ORIGINS = [
+  'http://localhost:4200',                    
+  'https://arquiabba-web.vercel.app',                 
+];
+
+app.set('trust proxy', 1); 
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+      return cb(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+
 // Desactivar ETag + caché agresiva para respuestas JSON
 app.set('etag', false);
 app.use((req, res, next) => {
@@ -79,22 +98,14 @@ app.use(cors({
 app.use(helmet());
 app.use(rateLimit({ windowMs: 60_000, max: 120 }));
 app.use(cookieParser());
-app.use(
-  // cookieSession({
-  //   name: 'sid',
-  //   secret: process.env.SESSION_SECRET || 'change-me',
-  //   httpOnly: true,
-  //   sameSite: 'lax',
-  //   secure: false, // EN PRODUCCIÓN: true (HTTPS)
-  //   path: '/',
-  // })
-  cookieSession({
+app.use(cookieSession({
   name: 'session',
   secret: process.env.SESSION_SECRET!,
-  sameSite: 'none',
-  secure: true
-})
-);
+  sameSite: 'none', 
+  secure: true,  
+  httpOnly: true,
+  maxAge: 24 * 60 * 60 * 1000,
+}));
 app.use(express.json());
 
 // servir estáticos de imágenes
