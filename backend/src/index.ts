@@ -33,25 +33,30 @@ const PAYPAL_BASE = PAYPAL_MODE === 'live'
 
 const CURRENCY = process.env.CURRENCY || 'EUR';
 
+app.set('trust proxy', 1);
+
 const ALLOWED_ORIGINS = [
   'http://localhost:4200',
-  'https://arquibaba-web.vercel.app',  
+  'https://arquibaba-web.vercel.app', 
 ];
-
-app.set('trust proxy', 1);
 
 const corsConfig: cors.CorsOptions = {
   origin(origin, cb) {
-    // permitir health checks sin origin
+    // permitir health checks/requests sin Origin (p.ej. curl, Render)
     if (!origin) return cb(null, true);
-    cb(ALLOWED_ORIGINS.includes(origin) ? null : new Error('CORS'), true);
+
+    if (ALLOWED_ORIGINS.includes(origin)) {
+      return cb(null, true);   // permitido -> cors añade ACAO con ese origin
+    }
+    // NO arrojes error aquí: responde sin permitir CORS (el preflight lo verá)
+    return cb(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
-// aplicar CORS y responder preflights
+// aplicar CORS y responder preflights SIEMPRE
 app.use(cors(corsConfig));
 app.options('*', cors(corsConfig));
 
