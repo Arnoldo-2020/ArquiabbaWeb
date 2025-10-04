@@ -34,23 +34,26 @@ const PAYPAL_BASE = PAYPAL_MODE === 'live'
 const CURRENCY = process.env.CURRENCY || 'EUR';
 
 const ALLOWED_ORIGINS = [
-  'http://localhost:4200',                    
-  'https://arquiabba-web.vercel.app',                 
+  'http://localhost:4200',
+  'https://arquibaba-web.vercel.app',  
 ];
 
-app.set('trust proxy', 1); 
+app.set('trust proxy', 1);
 
-app.use(
-  cors({
-    origin(origin, cb) {
-      if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-      return cb(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
+const corsConfig: cors.CorsOptions = {
+  origin(origin, cb) {
+    // permitir health checks sin origin
+    if (!origin) return cb(null, true);
+    cb(ALLOWED_ORIGINS.includes(origin) ? null : new Error('CORS'), true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+// aplicar CORS y responder preflights
+app.use(cors(corsConfig));
+app.options('*', cors(corsConfig));
 
 // Desactivar ETag + caché agresiva para respuestas JSON
 app.set('etag', false);
