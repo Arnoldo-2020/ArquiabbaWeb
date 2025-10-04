@@ -12,7 +12,6 @@ import bcrypt from 'bcrypt';
 import { v4 as uuid } from 'uuid';
 
 
-
 import sharp from 'sharp';
 import cloudinary, { type UploadApiResponse } from './cloudinary';
 import { randomUUID } from 'node:crypto';
@@ -23,13 +22,14 @@ import { createProductSchema, updateProductSchema } from './validation';
 // ---------- Config ----------
 const app = express();
 
-const allowAllOriginsTemporarily = true; 
-
+const allowAllOriginsTemporarily = false; // Lo he puesto a false para asegurar que la lista de orígenes funcione.
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:4200',
   'https://arquibaba-web.vercel.app', 
+  // ¡CORREGIDO! Este es el dominio que estaba dando el error 
+  'https://arquiabba-web.vercel.app', // <-- AGREGADO
 ]);
-
+// La opción cors({ origin: true }) está desactivada, por lo que usamos el middleware manual
 app.use((req, res, next) => {
   const origin = (req.headers.origin as string) || '';
 
@@ -39,6 +39,7 @@ app.use((req, res, next) => {
     !origin ||
     ALLOWED_ORIGINS.has(origin);
 
+  // *IMPORTANTE: La respuesta al preflight (OPTIONS) debe incluir los headers CORS, incluso si es un 204.*
   if (isAllowed) {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Vary', 'Origin');
@@ -53,6 +54,7 @@ app.use((req, res, next) => {
 
   // 2) Responder *cualquier* preflight aquí mismo
   if (req.method === 'OPTIONS') {
+    // Si isAllowed es true, los headers ya se han establecido arriba
     return res.status(204).end();
   }
 
@@ -65,13 +67,13 @@ const CSRF_COOKIE = process.env.CSRF_COOKIE || 'csrfToken';
 
 const PAYPAL_MODE = (process.env.PAYPAL_MODE || 'sandbox').toLowerCase();
 const PAYPAL_BASE = PAYPAL_MODE === 'live'
-  ? 'https://api-m.paypal.com'
+  ?
+ 'https://api-m.paypal.com'
   : 'https://api-m.sandbox.paypal.com';
 
 const CURRENCY = process.env.CURRENCY || 'EUR';
 
 app.set('trust proxy', 1);
-
 // Desactivar ETag + caché agresiva para respuestas JSON
 app.set('etag', false);
 app.use((req, res, next) => {
@@ -80,11 +82,9 @@ app.use((req, res, next) => {
   res.set('Expires', '0');
   next();
 });
-
 // Consigue un access token OAuth2 de PayPal
 async function getPayPalAccessToken() {
   const creds = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString('base64');
-
   const resp = await fetch(`${PAYPAL_BASE}/v1/oauth2/token`, {
     method: 'POST',
     headers: {
@@ -93,7 +93,6 @@ async function getPayPalAccessToken() {
     },
     body: 'grant_type=client_credentials'
   });
-
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(`PayPal OAuth error: ${resp.status} ${txt}`);
@@ -106,18 +105,7 @@ async function getPayPalAccessToken() {
 // crea carpeta de uploads si no existe
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
-app.options('*', (req, res) => {
-  const origin = (req.headers.origin as string) || '';
-  res.setHeader('Access-Control-Allow-Origin', origin || '*');
-  res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    (req.headers['access-control-request-headers'] as string) || 'Content-Type, Authorization'
-  );
-  res.status(204).end();
-});
+// Se elimina el app.options('*') duplicado ya que el middleware base lo maneja.
 
 // ---------- Middlewares base ----------
 //app.use(cors({ origin: true }));
@@ -138,18 +126,12 @@ app.use(rateLimit({ windowMs: 60_000, max: 120 }));
 
 // servir estáticos de imágenes
 app.use('/uploads', express.static(UPLOAD_DIR));
-
-
-
-
 // ---------- CSRF (double submit cookie) ----------
 function requireCsrf(req: Request, res: Response, next: Function) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-
   if (req.path === '/api/auth/login' || req.path === '/api/auth/logout' || req.path === '/api/checkout/session' ||
   req.path === '/api/paypal/create-order' ||
   req.path === '/api/paypal/capture-order' || req.path.startsWith('/api/paypal/')) return next();
-
   const cookie = (req as any).cookies?.[CSRF_COOKIE];
   const header = req.header('x-csrf-token');
   if (!cookie || !header || cookie !== header) {
@@ -183,7 +165,6 @@ function requireRole(role: 'ADMIN' | 'USER') {
 
 const fileFilter: import('multer').Options['fileFilter'] = (req, file, cb) => {
   const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/avif'];
-
   if (allowed.includes(file.mimetype)) {
     return cb(null, true);           
   }
@@ -198,12 +179,10 @@ export const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter,
 });
-
 // ---------- Health ----------
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, service: 'products-api', ts: new Date().toISOString() });
 });
-
 // ---------- Auth routes ----------
 app.post('/api/auth/login', async (req: any, res) => {
   const { email, password } = req.body ?? {};
@@ -221,21 +200,20 @@ app.post('/api/auth/login', async (req: any, res) => {
   // set CSRF cookie (no HttpOnly)
   const csrf = Math.random().toString(36).slice(2);
   res.cookie(CSRF_COOKIE, csrf, {
+ 
     sameSite: 'lax',
-    secure: false, // EN PRODUCCIÓN: true (HTTPS)
+    secure: true, // EN PRODUCCIÓN: Debe ser 'true' si el frontend usa HTTPS.
     httpOnly: false,
     path: '/',
   });
 
   res.json({ ok: true });
 });
-
 app.post('/api/auth/logout', (req: any, res) => {
   req.session = null;
-  res.clearCookie(CSRF_COOKIE, { path: '/' });
+  res.clearCookie(CSRF_COOKIE, { path: '/', sameSite: 'lax' }); // Agregado sameSite para claridad
   res.status(204).send();
 });
-
 app.get('/api/auth/me', requireAuth, async (req: any, res) => {
   const me = await prisma.user.findUnique({
     where: { id: req.session.uid },
@@ -243,22 +221,20 @@ app.get('/api/auth/me', requireAuth, async (req: any, res) => {
   });
   res.json(me);
 });
-
 // ---------- PRODUCTS (GET públicos) ----------
 app.get('/api/products', async (_req, res) => {
   const items = await prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
   console.log('LIST COUNT', items.length);
   res.json(items);
 });
-
 app.get('/api/products/:id', async (req, res) => {
   const item = await prisma.product.findUnique({ where: { id: req.params.id } });
   if (!item) return res.status(404).json({ error: 'Not found' });
   res.json(item);
 });
-
 // ---------- PRODUCTS (mutaciones solo ADMIN) ----------
 
+// Código comentado original de la subida a Cloudinary
 // app.post('/api/products', upload.single('image'), async (req: Request, res: Response) => {
 //   try {
 //     // ... valida req.body con tu zod schema
@@ -268,52 +244,50 @@ app.get('/api/products/:id', async (req, res) => {
 //       // 1) Procesa la imagen en memoria con sharp
 //       const buf = await sharp(req.file.buffer)
 //         .rotate()
-//         .resize({ width: 1600, withoutEnlargement: true })
+//         .resize({ 
+// width: 1600, withoutEnlargement: true })
 //         .toFormat('webp', { quality: 82 })
 //         .toBuffer();
+// //       const filename = randomUUID();
+// //       // 2) Sube a Cloudinary usando upload_stream (con tipos correctos)
+// //       const url: string = await new Promise<string>((resolve, reject) => {
+// //         const stream = cloudinary.uploader.upload_stream(
+// //           {
+// //             folder: 'products',
+// //             public_id: filename,
+// //             resource_type: 'image',
+// //   
+// //           overwrite: true,
+// //           },
+// //           (err?: Error, result?: UploadApiResponse) => {
+// //             if (err) return reject(err);
+// //             if (!result || !result.secure_url) {
+// //               return reject(new Error('Upload failed'));
+// //           
+// //   }
+// //             resolve(result.secure_url);
+// //           }
+// //         );
+// //         stream.end(buf);
+// //       });
+// //       imageUrl = url;
+// //     }
 
-//       const filename = randomUUID();
-
-//       // 2) Sube a Cloudinary usando upload_stream (con tipos correctos)
-//       const url: string = await new Promise<string>((resolve, reject) => {
-//         const stream = cloudinary.uploader.upload_stream(
-//           {
-//             folder: 'products',
-//             public_id: filename,
-//             resource_type: 'image',
-//             overwrite: true,
-//           },
-//           (err?: Error, result?: UploadApiResponse) => {
-//             if (err) return reject(err);
-//             if (!result || !result.secure_url) {
-//               return reject(new Error('Upload failed'));
-//             }
-//             resolve(result.secure_url);
-//           }
-//         );
-//         stream.end(buf);
-//       });
-
-//       imageUrl = url;
-//     }
-
-//     if (!imageUrl) {
-//       return res.status(400).json({ error: 'Image is required (file or imageUrl)' });
-//     }
+// //     if (!imageUrl) {
+// //       return res.status(400).json({ error: 'Image is required (file or imageUrl)' });
+// //     }
 
 //     // ... crea el producto en Prisma con imageUrl
-//     const created = await prisma.product.create({ data: { name: ..., imageUrl, ... } });
-//     console.log('CREATED PRODUCT', created.id);
-//     res.status(201).json(created);
-//     res.status(201).json({ ok: true, imageUrl }); // <-- temporal, si quieres probar
+// //     const created = await prisma.product.create({ data: { name: ..., imageUrl, ... } });
+// //     console.log('CREATED PRODUCT', created.id);
+// //     res.status(201).json(created);
+// //     res.status(201).json({ ok: true, imageUrl });
+// // <-- temporal, si quieres probar
 //   } catch (e: any) {
 //     console.error(e);
-//     res.status(400).json({ error: e?.message || 'Bad request' });
+// //     res.status(400).json({ error: e?.message || 'Bad request' });
 //   }
 // });
-
-
-
 app.post('/api/products', upload.single('image'), async (req: Request, res: Response) => {
   try {
     const { name, description = '', price, imageUrl } = req.body as {
@@ -327,14 +301,14 @@ app.post('/api/products', upload.single('image'), async (req: Request, res: Resp
     let url: string | null = null;
 
     if (req.file) {
-      // 1) Procesa la imagen
+      
+// 1) Procesa la imagen
       const buf = await sharp(req.file.buffer)
         .rotate()
         .resize({ width: 1200, withoutEnlargement: true })
         .webp({ quality: 85 })
         .toBuffer();
-
-      // 2) Sube a Cloudinary
+// 2) Sube a Cloudinary
       const filename = randomUUID();
       url = await new Promise<string>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
@@ -343,6 +317,7 @@ app.post('/api/products', upload.single('image'), async (req: Request, res: Resp
             if (err || !result?.secure_url) return reject(err ?? new Error('Upload failed'));
             resolve(result.secure_url);
           }
+      
         );
         stream.end(buf);
       });
@@ -362,7 +337,6 @@ app.post('/api/products', upload.single('image'), async (req: Request, res: Resp
         imageUrl: url,
       },
     });
-
     console.log('CREATED PRODUCT', created.id);
     return res.status(201).json(created);
   } catch (e: any) {
@@ -371,6 +345,7 @@ app.post('/api/products', upload.single('image'), async (req: Request, res: Resp
   }
 });
 
+// Código comentado para crear y actualizar que usa disco
 // Crear (multipart: campos + image o imageUrl)
 // app.post('/api/products', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req, res) => {
 //   try {
@@ -382,7 +357,8 @@ app.post('/api/products', upload.single('image'), async (req: Request, res: Resp
 
 //     if (!imageUrl) {
 //       if (req.file) fs.unlink(path.join(UPLOAD_DIR, req.file.filename), () => {});
-//       return res.status(400).json({ error: 'Image is required (image file or imageUrl)' });
+//       return res.status(400).json({ error: 'Image 
+// is required (image file or imageUrl)' });
 //     }
 
 //     const created = await prisma.product.create({
@@ -395,10 +371,10 @@ app.post('/api/products', upload.single('image'), async (req: Request, res: Resp
 //     });
 //     res.status(201).json(created);
 //   } catch (err: any) {
-//     return res.status(400).json({ error: err?.message ?? 'Invalid data' });
+//     
+// return res.status(400).json({ error: err?.message ?? 'Invalid data' });
 //   }
 // });
-
 // Actualizar (multipart opcional)
 // app.put('/api/products/:id', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req, res) => {
 //   try {
@@ -413,6 +389,7 @@ app.post('/api/products', upload.single('image'), async (req: Request, res: Resp
 //     // prioridad: archivo nuevo > imageUrl texto > conservar actual
 //     if (req.file) {
 //       imageUrl = `/uploads/${req.file.filename}`;
+// 
 //       if (current.imageUrl?.startsWith('/uploads/')) {
 //         const oldPath = path.join(UPLOAD_DIR, path.basename(current.imageUrl));
 //         fs.unlink(oldPath, () => {});
@@ -421,8 +398,8 @@ app.post('/api/products', upload.single('image'), async (req: Request, res: Resp
 //       imageUrl = req.body.imageUrl.trim();
 //       if (current.imageUrl?.startsWith('/uploads/')) {
 //         const oldPath = path.join(UPLOAD_DIR, path.basename(current.imageUrl));
-//         fs.unlink(oldPath, () => {});
-//       }
+// //         fs.unlink(oldPath, () => {});
+// //       }
 //     }
 
 //     const updated = await prisma.product.update({
@@ -434,10 +411,10 @@ app.post('/api/products', upload.single('image'), async (req: Request, res: Resp
 //         imageUrl,
 //       },
 //     });
-//     res.json(updated);
+// //     res.json(updated);
 //   } catch (err: any) {
 //     return res.status(400).json({ error: err?.message ?? 'Invalid data' });
-//   }
+// //   }
 // });
 
 // Eliminar
@@ -455,7 +432,6 @@ app.delete('/api/products/:id', requireAuth, requireRole('ADMIN'), async (req, r
 
   res.status(204).send();
 });
-
 /**
  * POST /api/paypal/create-order
  * Body: { items: [{ id: string, quantity: number }] }
@@ -470,7 +446,8 @@ app.post('/api/paypal/create-order', async (req, res) => {
 
     // Verdad desde la DB (no confiar en precios del cliente)
     const ids = items.map(i => i.id);
-    const dbItems = await prisma.product.findMany({ where: { id: { in: ids } } });
+    const dbItems = 
+ await prisma.product.findMany({ where: { id: { in: ids } } });
 
     let total = 0;
     const paypalItems = items.map(i => {
@@ -481,7 +458,8 @@ app.post('/api/paypal/create-order', async (req, res) => {
       total += price * qty;
 
       return {
-        name: p.name,
+        name: 
+ p.name,
         description: p.description?.slice(0, 127),
         unit_amount: { currency_code: CURRENCY, value: price.toFixed(2) },
         quantity: qty.toString(),
@@ -502,6 +480,7 @@ app.post('/api/paypal/create-order', async (req, res) => {
         purchase_units: [{
           amount: {
             currency_code: CURRENCY,
+ 
             value: total.toFixed(2),
             breakdown: {
               item_total: { currency_code: CURRENCY, value: total.toFixed(2) }
@@ -510,26 +489,26 @@ app.post('/api/paypal/create-order', async (req, res) => {
           items: paypalItems
         }],
         application_context: {
+     
           brand_name: 'Tu Tienda',
           user_action: 'PAY_NOW',
           landing_page: 'LOGIN'
         }
       })
     });
-
     if (!resp.ok) {
       const txt = await resp.text();
       throw new Error(`PayPal create error: ${resp.status} ${txt}`);
     }
 
     const data = await resp.json() as any;
-    return res.json({ id: data.id }); // orderID
+    return res.json({ id: data.id });
+// orderID
   } catch (err: any) {
     console.error('PayPal create-order error', err);
     return res.status(400).json({ error: err?.message ?? 'PayPal create error' });
   }
 });
-
 /**
  * POST /api/paypal/capture-order
  * Body: { orderID: string }
@@ -547,6 +526,7 @@ app.post('/api/paypal/capture-order', async (req, res) => {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
+     
       }
       // body vacío o {}
     });
@@ -567,7 +547,6 @@ app.post('/api/paypal/capture-order', async (req, res) => {
     return res.status(400).json({ error: err?.message ?? 'PayPal capture error' });
   }
 });
-
 // ---------- Start ----------
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
