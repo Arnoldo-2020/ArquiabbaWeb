@@ -35,30 +35,8 @@ const CURRENCY = process.env.CURRENCY || 'EUR';
 
 app.set('trust proxy', 1);
 
-const ALLOWED_ORIGINS = [
-  'http://localhost:4200',
-  'https://arquibaba-web.vercel.app', 
-];
-
-const corsConfig: cors.CorsOptions = {
-  origin(origin, cb) {
-    // permitir health checks/requests sin Origin (p.ej. curl, Render)
-    if (!origin) return cb(null, true);
-
-    if (ALLOWED_ORIGINS.includes(origin)) {
-      return cb(null, true);   // permitido -> cors añade ACAO con ese origin
-    }
-    // NO arrojes error aquí: responde sin permitir CORS (el preflight lo verá)
-    return cb(null, false);
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-};
-
-// aplicar CORS y responder preflights SIEMPRE
-app.use(cors(corsConfig));
-app.options('*', cors(corsConfig));
+app.use(cors({ origin: true, credentials: true }));
+app.options('*', cors({ origin: true, credentials: true }));
 
 // Desactivar ETag + caché agresiva para respuestas JSON
 app.set('etag', false);
