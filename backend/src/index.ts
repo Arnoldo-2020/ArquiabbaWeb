@@ -23,33 +23,40 @@ import { createProductSchema, updateProductSchema } from './validation';
 // ---------- Config ----------
 const app = express();
 
+const allowAllOriginsTemporarily = true; 
+
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:4200',
-  'https://arquibaba-web.vercel.app',
+  'https://arquibaba-web.vercel.app', 
 ]);
 
 app.use((req, res, next) => {
-  const origin = req.headers.origin || '';
+  const origin = (req.headers.origin as string) || '';
 
-  // Permite health checks y llamadas sin Origin (p. ej., curl o Render)
-  if (!origin || ALLOWED_ORIGINS.has(origin)) {
-    // CORS headers
+  // 1) Decide si permites el origen
+  const isAllowed =
+    allowAllOriginsTemporarily ||
+    !origin ||
+    ALLOWED_ORIGINS.has(origin);
+
+  if (isAllowed) {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.setHeader(
       'Access-Control-Allow-Headers',
-      req.headers['access-control-request-headers'] || 'Content-Type, Authorization'
+      // reenvía exactamente lo que pide el navegador
+      (req.headers['access-control-request-headers'] as string) || 'Content-Type, Authorization'
     );
   }
 
-  // Responder *preflight* aquí mismo
+  // 2) Responder *cualquier* preflight aquí mismo
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
+    return res.status(204).end();
   }
 
-  next();
+  return next();
 });
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -99,17 +106,22 @@ async function getPayPalAccessToken() {
 // crea carpeta de uploads si no existe
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
+app.options('*', (req, res) => {
+  const origin = (req.headers.origin as string) || '';
+  res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    (req.headers['access-control-request-headers'] as string) || 'Content-Type, Authorization'
+  );
+  res.status(204).end();
+});
+
 // ---------- Middlewares base ----------
 //app.use(cors({ origin: true }));
-app.use(cors({
-  origin: [
-    'http://localhost:4200',
-    'https://arquibabba-web.vercel.app'
-  ],
-  credentials: true
-}));
-app.use(helmet());
-app.use(rateLimit({ windowMs: 60_000, max: 120 }));
+app.use(express.json());
 app.use(cookieParser());
 app.use(cookieSession({
   name: 'session',
@@ -119,7 +131,10 @@ app.use(cookieSession({
   httpOnly: true,
   maxAge: 24 * 60 * 60 * 1000,
 }));
-app.use(express.json());
+app.use(helmet());
+app.use(rateLimit({ windowMs: 60_000, max: 120 }));
+
+
 
 // servir estáticos de imágenes
 app.use('/uploads', express.static(UPLOAD_DIR));
