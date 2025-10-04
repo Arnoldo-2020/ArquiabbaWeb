@@ -33,10 +33,34 @@ const PAYPAL_BASE = PAYPAL_MODE === 'live'
 
 const CURRENCY = process.env.CURRENCY || 'EUR';
 
-app.set('trust proxy', 1);
+const ALLOWED_ORIGINS = new Set([
+  'http://localhost:4200',
+  'https://arquibaba-web.vercel.app',
+]);
 
-app.use(cors({ origin: true, credentials: true }));
-app.options('*', cors({ origin: true, credentials: true }));
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '';
+
+  // Permite health checks y llamadas sin Origin (p. ej., curl o Render)
+  if (!origin || ALLOWED_ORIGINS.has(origin)) {
+    // CORS headers
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      req.headers['access-control-request-headers'] || 'Content-Type, Authorization'
+    );
+  }
+
+  // Responder *preflight* aquí mismo
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
 
 // Desactivar ETag + caché agresiva para respuestas JSON
 app.set('etag', false);
