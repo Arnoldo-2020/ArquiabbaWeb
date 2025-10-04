@@ -22,16 +22,6 @@ import { createProductSchema, updateProductSchema } from './validation';
 
 // ---------- Config ----------
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
-const CSRF_COOKIE = process.env.CSRF_COOKIE || 'csrfToken';
-
-const PAYPAL_MODE = (process.env.PAYPAL_MODE || 'sandbox').toLowerCase();
-const PAYPAL_BASE = PAYPAL_MODE === 'live'
-  ? 'https://api-m.paypal.com'
-  : 'https://api-m.sandbox.paypal.com';
-
-const CURRENCY = process.env.CURRENCY || 'EUR';
 
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:4200',
@@ -61,6 +51,19 @@ app.use((req, res, next) => {
 
   next();
 });
+
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+const CSRF_COOKIE = process.env.CSRF_COOKIE || 'csrfToken';
+
+const PAYPAL_MODE = (process.env.PAYPAL_MODE || 'sandbox').toLowerCase();
+const PAYPAL_BASE = PAYPAL_MODE === 'live'
+  ? 'https://api-m.paypal.com'
+  : 'https://api-m.sandbox.paypal.com';
+
+const CURRENCY = process.env.CURRENCY || 'EUR';
+
+app.set('trust proxy', 1);
 
 // Desactivar ETag + caché agresiva para respuestas JSON
 app.set('etag', false);
