@@ -88,45 +88,6 @@ app.use((req, _res, next) => {
   next();
 });
 
-const corsOptions: CorsOptions = {
-  origin: (origin, cb) => {
-    // Permitir sin Origin (curl/health checks) y los orígenes en whitelist
-    if (!origin || ALLOWED_ORIGINS.has(origin)) return cb(null, true);
-    return cb(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
-};
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin as string | undefined;
-  if (origin && FRONT_ORIGIN.includes(origin)) {
-    // CORS headers para TODAS las respuestas
-    res.header('Access-Control-Allow-Origin', origin);
-    res.header('Vary', 'Origin'); // evita cachear para origenes cruzados
-    res.header('Access-Control-Allow-Credentials', 'true');
-    // métodos y cabeceras permitidos
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    // reusa lo que el navegador pidió, o un set por defecto
-    res.header(
-      'Access-Control-Allow-Headers',
-      (req.headers['access-control-request-headers'] as string) ||
-        'Content-Type, Authorization, X-CSRF-Token'
-    );
-  }
-
-  // Responder inmediatamente los preflight
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-  next();
-});
-
-
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Manejo explícito del preflight
-
 /**
  * ============================
  *  Middlewares base (orden)
