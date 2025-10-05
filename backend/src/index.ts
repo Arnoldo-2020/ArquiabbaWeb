@@ -50,6 +50,44 @@ const ALLOWED_ORIGINS = new Set<string>([
   FRONT_ORIGIN,
 ]);
 
+function setCorsHeaders(res: import('express').Response, origin: string) {
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin'); // para que el CDN no mezcle orígenes
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'GET,POST,PUT,PATCH,DELETE,OPTIONS'
+  );
+  // reusar lo que pidió el navegador o un set por defecto
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    (res.req.headers['access-control-request-headers'] as string) ||
+      'Content-Type, Authorization, X-CSRF-Token'
+  );
+}
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin as string | undefined;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    setCorsHeaders(res, origin);
+  }
+
+  // Responder TODOS los preflights (OPTIONS) aquí mismo
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  next();
+});
+
+// (opcional) logging mínimo para verificar que la petición sí llega a Express
+app.use((req, _res, next) => {
+  if (req.path.startsWith('/api/')) {
+    console.log(`[req] ${req.method} ${req.path}`);
+  }
+  next();
+});
+
 const corsOptions: CorsOptions = {
   origin: (origin, cb) => {
     // Permitir sin Origin (curl/health checks) y los orígenes en whitelist
