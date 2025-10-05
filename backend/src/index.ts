@@ -85,6 +85,7 @@ app.use((req, res, next) => {
   next();
 });
 
+
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Manejo explícito del preflight
 
