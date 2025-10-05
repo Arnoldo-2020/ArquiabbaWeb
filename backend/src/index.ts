@@ -24,7 +24,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 const CSRF_COOKIE = process.env.CSRF_COOKIE || 'csrfToken';
-const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquibaba-web.vercel.app'; // <-- ajusta si cambia
+const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquibaba-web.vercel.app'; 
 const CURRENCY = process.env.CURRENCY || 'EUR';
 
 /**
@@ -60,6 +60,30 @@ const corsOptions: CorsOptions = {
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 };
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin as string | undefined;
+  if (origin && FRONT_ORIGIN.includes(origin)) {
+    // CORS headers para TODAS las respuestas
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin'); // evita cachear para origenes cruzados
+    res.header('Access-Control-Allow-Credentials', 'true');
+    // métodos y cabeceras permitidos
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    // reusa lo que el navegador pidió, o un set por defecto
+    res.header(
+      'Access-Control-Allow-Headers',
+      (req.headers['access-control-request-headers'] as string) ||
+        'Content-Type, Authorization, X-CSRF-Token'
+    );
+  }
+
+  // Responder inmediatamente los preflight
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Manejo explícito del preflight
