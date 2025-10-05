@@ -24,7 +24,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 const CSRF_COOKIE = process.env.CSRF_COOKIE || 'csrfToken';
-const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquibaba-web.vercel.app'; 
+const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquiabba-web.vercel.app'; 
 const CURRENCY = process.env.CURRENCY || 'EUR';
 
 /**
