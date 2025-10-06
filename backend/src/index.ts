@@ -17,71 +17,66 @@ import { createProductSchema, updateProductSchema } from './validation';
 
 /**
  * ============================
- *  Express App & Constants
+ * Express App & Constants
  * ============================
  */
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 const CSRF_COOKIE = process.env.CSRF_COOKIE || 'csrfToken';
-const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquiabba-web.vercel.app'; 
+const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquiabba-web.vercel.app';
 const CURRENCY = process.env.CURRENCY || 'EUR';
 
 /**
  * ============================
- *  PROXY & SECURITY
+ * PROXY & SECURITY
  * ============================
- * Render/Vercel están detrás de proxy
- * Necesario para que secure cookies funcionen al 100% con HTTPS
  */
 app.set('trust proxy', 1);
 
 /**
  * ============================
- *  CORS (con credenciales)
+ * Middlewares base (orden)
  * ============================
- * Reglas:
- *  - Echo del Origin permitido (no "*") porque usamos cookies (credentials:true)
- *  - Preflight OPTIONS debe devolver 2xx y los headers CORS
- *  - Permitimos front local y el dominio de Vercel
  */
-const ALLOWED_ORIGINS = new Set<string>([
-  'http://localhost:4200',
-  'https://arquibaba-web.vercel.app',
-  FRONT_ORIGIN,
-]);
 
-function setCorsHeaders(res: import('express').Response, origin: string) {
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Vary', 'Origin'); // para que el CDN no mezcle orígenes
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader(
-    'Access-Control-Allow-Methods',
-    'GET,POST,PUT,PATCH,DELETE,OPTIONS'
-  );
-  // reusar lo que pidió el navegador o un set por defecto
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    (res.req.headers['access-control-request-headers'] as string) ||
-      'Content-Type, Authorization, X-CSRF-Token'
-  );
-}
+// 1. Helmet para cabeceras de seguridad
+app.use(helmet());
 
-app.use((req, res, next) => {
-  const origin = req.headers.origin as string | undefined;
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
-    setCorsHeaders(res, origin);
-  }
+// 2. CORS (configuración robusta y centralizada)
+const corsOptions: CorsOptions = {
+  origin: ['http://localhost:4200', FRONT_ORIGIN], // Orígenes permitidos
+  credentials: true, // Permitir cookies y encabezados de autorización
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+};
+app.use(cors(corsOptions));
 
-  // Responder TODOS los preflights (OPTIONS) aquí mismo
-  if (req.method === 'OPTIONS') {
-    return res.status(204).end();
-  }
+// 3. Rate Limiter
+app.use(rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }));
 
+// 4. Parsers (Cookies y JSON)
+app.use(cookieParser());
+app.use(cookieSession({
+  name: 'session',
+  secret: process.env.SESSION_SECRET || 'change-me',
+  sameSite: 'none',
+  secure: true,
+  httpOnly: true,
+  maxAge: 24 * 60 * 60 * 1000,
+}));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 5. No-cache para respuestas de API
+app.use('/api/', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   next();
 });
 
-// (opcional) logging mínimo para verificar que la petición sí llega a Express
+// (Opcional) Logging de peticiones
 app.use((req, _res, next) => {
   if (req.path.startsWith('/api/')) {
     console.log(`[req] ${req.method} ${req.path}`);
@@ -91,43 +86,14 @@ app.use((req, _res, next) => {
 
 /**
  * ============================
- *  Middlewares base (orden)
- * ============================
- * Importante: CORS antes que cookie-session y parsers.
- */
-app.use(helmet());
-app.use(rateLimit({ windowMs: 60_000, max: 120 }));
-app.use(cookieParser());
-app.use(cookieSession({
-  name: 'session',
-  secret: process.env.SESSION_SECRET || 'change-me',
-  sameSite: 'none',   // cookies cross-site
-  secure: true,       // obliga HTTPS (Render usa HTTPS)
-  httpOnly: true,
-  maxAge: 24 * 60 * 60 * 1000,
-}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// No-cache para respuestas JSON
-app.set('etag', false);
-app.use((_req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  next();
-});
-
-/**
- * ============================
- *  Preparar carpeta local de uploads (solo si existe en este despliegue)
+ * Preparar carpeta local de uploads
  * ============================
  */
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 /**
  * ============================
- *  Multer (memoria) + filtro de imagen
+ * Multer (memoria) + filtro de imagen
  * ============================
  */
 const fileFilter: import('multer').Options['fileFilter'] = (_req, file, cb) => {
@@ -142,7 +108,7 @@ export const upload = multer({
 
 /**
  * ============================
- *  Health
+ * Health
  * ============================
  */
 app.get('/api/health', (_req: Request, res: Response) => {
@@ -151,23 +117,20 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 /**
  * ============================
- *  CSRF (doble cookie)
+ * CSRF (doble cookie)
  * ============================
- * Exigimos el header X-CSRF-Token salvo en login/logout y PayPal.
- * Nota: la cookie CSRF debe ser SameSite=None y secure en producción.
  */
 function requireCsrf(req: Request, res: Response, next: NextFunction) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   if (
     req.path === '/api/auth/login' ||
     req.path === '/api/auth/logout' ||
-    req.path === '/api/paypal/create-order' ||
-    req.path === '/api/paypal/capture-order' ||
     req.path.startsWith('/api/paypal/')
   ) return next();
-
+    
   const cookie = (req as any).cookies?.[CSRF_COOKIE];
   const header = req.header('x-csrf-token');
+    
   if (!cookie || !header || cookie !== header) {
     return res.status(403).json({ error: 'CSRF token invalid' });
   }
@@ -177,7 +140,7 @@ app.use(requireCsrf);
 
 /**
  * ============================
- *  Auth helpers
+ * Auth helpers
  * ============================
  */
 function requireAuth(req: any, res: Response, next: NextFunction) {
@@ -193,7 +156,7 @@ function requireRole(role: 'ADMIN' | 'USER') {
 
 /**
  * ============================
- *  Auth routes
+ * Auth routes
  * ============================
  */
 app.post('/api/auth/login', async (req: any, res) => {
@@ -206,15 +169,13 @@ app.post('/api/auth/login', async (req: any, res) => {
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
-  // Crear sesión
   req.session = { uid: user.id, role: user.role };
 
-  // Enviar cookie CSRF accesible por JS (para cabecera X-CSRF-Token)
   const csrf = Math.random().toString(36).slice(2);
   res.cookie(CSRF_COOKIE, csrf, {
     sameSite: 'none',
     secure: true,
-    httpOnly: false, // debe ser legible por el frontend para enviarla en X-CSRF-Token
+    httpOnly: false,
     path: '/',
   });
 
@@ -237,7 +198,7 @@ app.get('/api/auth/me', requireAuth, async (req: any, res) => {
 
 /**
  * ============================
- *  Productos (públicos)
+ * Productos (públicos)
  * ============================
  */
 app.get('/api/products', async (_req, res) => {
@@ -253,11 +214,10 @@ app.get('/api/products/:id', async (req, res) => {
 
 /**
  * ============================
- *  Crear producto (ADMIN)
- *  - multipart con campo 'image' o campo 'imageUrl'
- *  - sube a Cloudinary con sharp
+ * Rutas de Admin (resto del CRUD)
  * ============================
  */
+// ... (el resto de tus rutas de productos y PayPal pueden permanecer sin cambios)
 app.post('/api/products', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req: Request, res: Response) => {
   try {
     const { name, description = '', price, imageUrl } = req.body as {
@@ -302,11 +262,6 @@ app.post('/api/products', requireAuth, requireRole('ADMIN'), upload.single('imag
   }
 });
 
-/**
- * ============================
- *  Actualizar producto (ADMIN) - imagen opcional
- * ============================
- */
 app.put('/api/products/:id', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req: Request, res: Response) => {
   try {
     const id = req.params.id;
@@ -343,7 +298,7 @@ app.put('/api/products/:id', requireAuth, requireRole('ADMIN'), upload.single('i
     if (parsed.data.description !== undefined) data.description = parsed.data.description;
     if (parsed.data.price !== undefined) data.price = parsed.data.price;
     data.imageUrl = imageUrl;
-
+    
     const updated = await prisma.product.update({ where: { id }, data });
     return res.json(updated);
   } catch (e: any) {
@@ -352,11 +307,6 @@ app.put('/api/products/:id', requireAuth, requireRole('ADMIN'), upload.single('i
   }
 });
 
-/**
- * ============================
- *  Eliminar producto (ADMIN)
- * ============================
- */
 app.delete('/api/products/:id', requireAuth, requireRole('ADMIN'), async (req, res) => {
   const id = req.params.id;
   const current = await prisma.product.findUnique({ where: { id } });
@@ -370,12 +320,6 @@ app.delete('/api/products/:id', requireAuth, requireRole('ADMIN'), async (req, r
   res.status(204).send();
 });
 
-/**
- * ============================
- *  PayPal (idéntico a tu versión, omitido por brevedad si no es core del problema de CORS)
- *  -- puedes pegar aquí tus endpoints de PayPal sin cambios si los necesitas --
- * ============================
- */
 
 // Arrancar
 app.listen(PORT, () => {
