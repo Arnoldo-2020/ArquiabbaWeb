@@ -4,7 +4,7 @@
 
 export const environment = {
   production: true, // en prod
-  API_URL: 'https://arquibabbaweb.onrender.com/api'
+  API_URL: 'https://arquiabbaweb.onrender.com/api'
 };
 
 /*
