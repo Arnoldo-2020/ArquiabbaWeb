@@ -47,6 +47,7 @@ app.set('trust proxy', 1);
  */
 const ALLOWED_ORIGINS = new Set<string>([
   'http://localhost:4200',
+  'https://arquibaba-web.vercel.app',
   FRONT_ORIGIN,
 ]);
 
