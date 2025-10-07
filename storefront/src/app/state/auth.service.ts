@@ -3,7 +3,12 @@ import { HttpClient } from '@angular/common/http';
 import { environment } from 'src/environments/environment';
 import { Observable, tap } from 'rxjs';
 
-export type UserMe = { /* ... */ };
+// En auth.service.ts
+export type UserMe = {
+  id: string;
+  email: string;
+  role: 'ADMIN' | 'USER'; // La propiedad 'role' es obligatoria
+};
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
