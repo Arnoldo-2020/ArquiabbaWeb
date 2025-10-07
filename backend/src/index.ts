@@ -179,7 +179,7 @@ app.post('/api/auth/login', async (req: any, res) => {
     path: '/',
   });
 
-  res.json({ ok: true });
+  res.json({ ok: true, csrfToken: csrf });
 });
 
 app.post('/api/auth/logout', (req: any, res) => {
