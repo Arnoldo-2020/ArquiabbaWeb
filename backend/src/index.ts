@@ -120,20 +120,42 @@ app.get('/api/health', (_req: Request, res: Response) => {
  * CSRF (doble cookie)
  * ============================
  */
-function requireCsrf(req: Request, res: Response, next: NextFunction) {
+// function requireCsrf(req: Request, res: Response, next: NextFunction) {
+//   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+//   if (
+//     req.path === '/api/auth/login' ||
+//     req.path === '/api/auth/logout' ||
+//     req.path.startsWith('/api/paypal/')
+//   ) return next();
+    
+//   const cookie = (req as any).cookies?.[CSRF_COOKIE];
+//   const header = req.header('x-csrf-token');
+    
+//   if (!cookie || !header || cookie !== header) {
+//     return res.status(403).json({ error: 'CSRF token invalid' });
+//   }
+//   next();
+// }
+
+function requireCsrf(req: any, res: Response, next: NextFunction) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+
+  // Rutas exentas de la verificación
   if (
     req.path === '/api/auth/login' ||
     req.path === '/api/auth/logout' ||
     req.path.startsWith('/api/paypal/')
-  ) return next();
-    
-  const cookie = (req as any).cookies?.[CSRF_COOKIE];
-  const header = req.header('x-csrf-token');
-    
-  if (!cookie || !header || cookie !== header) {
+  ) {
+    return next();
+  }
+
+  const tokenFromHeader = req.header('x-csrf-token');
+  const tokenFromSession = req.session?.csrfToken;
+
+  if (!tokenFromHeader || !tokenFromSession || tokenFromHeader !== tokenFromSession) {
     return res.status(403).json({ error: 'CSRF token invalid' });
   }
+
   next();
 }
 app.use(requireCsrf);
@@ -159,6 +181,8 @@ function requireRole(role: 'ADMIN' | 'USER') {
  * Auth routes
  * ============================
  */
+// 
+
 app.post('/api/auth/login', async (req: any, res) => {
   const { email, password } = req.body ?? {};
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
@@ -168,16 +192,12 @@ app.post('/api/auth/login', async (req: any, res) => {
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-
-  req.session = { uid: user.id, role: user.role };
-
+  
+  // Genera el token CSRF
   const csrf = Math.random().toString(36).slice(2);
-  res.cookie(CSRF_COOKIE, csrf, {
-    sameSite: 'none',
-    secure: true,
-    httpOnly: false,
-    path: '/',
-  });
+
+  // Guarda el token en la sesión segura (HttpOnly)
+  req.session = { uid: user.id, role: user.role, csrfToken: csrf };
 
   res.json({ ok: true, csrfToken: csrf });
 });
