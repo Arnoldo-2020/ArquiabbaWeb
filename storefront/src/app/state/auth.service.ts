@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from 'src/environments/environment';
-import { Observable, of } from 'rxjs';
+import { Observable, of, tap } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
 
 export type UserMe = {
@@ -14,6 +14,11 @@ export type UserMe = {
 export class AuthService {
   private http = inject(HttpClient);
   private base = environment.API_URL;
+  private csrfToken: string | null = null;
+
+  getCsrfToken(): string | null {
+    return this.csrfToken;
+  }
 
 
   private warmUp(): Observable<unknown> {
@@ -25,15 +30,19 @@ export class AuthService {
   }
 
 
-  login(email: string, password: string): Observable<unknown> {
+  login(email: string, password: string): Observable<{ ok: boolean, csrfToken: string }> {
     return this.warmUp().pipe(
       switchMap(() =>
-        this.http.post(
+        this.http.post<{ ok: boolean, csrfToken: string }>(
           `${this.base}/auth/login`,
           { email, password },
           { withCredentials: true }
         )
-      )
+      ),
+    tap(response => {
+        this.csrfToken = response.csrfToken;
+        console.log('AuthService: Token CSRF guardado:', this.csrfToken);
+      })
     );
   }
 

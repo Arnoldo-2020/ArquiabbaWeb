@@ -1,34 +1,28 @@
-import { HttpInterceptorFn, HttpRequest, HttpHandlerFn } from '@angular/common/http';
+// En src/app/shared/auth-csrf.interceptor.ts
 
-function getCookie(name: string): string | null {
-  const nameLenPlus = name.length + 1;
-  return document.cookie
-    .split(';')
-    .map(c => c.trim())
-    .filter(cookie => cookie.substring(0, nameLenPlus) === `${name}=`)
-    .map(cookie => decodeURIComponent(cookie.substring(nameLenPlus)))[0] || null;
-}
+import { inject } from '@angular/core';
+import { HttpInterceptorFn, HttpRequest, HttpHandlerFn } from '@angular/common/http';
+import { AuthService } from '../state/auth.service';
 
 export const authCsrfInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, next: HttpHandlerFn) => {
-  // Primero, verifica si el método NO necesita el token y sal de inmediato
+  // Inyectamos el AuthService para acceder al token
+  const authService = inject(AuthService);
+
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
     return next(req);
   }
 
-  // Si el método SÍ necesita el token, búscalo
-  const csrfToken = getCookie('csrfToken');
+  // Obtenemos el token directamente del servicio
+  const csrfToken = authService.getCsrfToken();
 
-  // Si no se encuentra el token, envía la petición original (el backend la rechazará)
-  // y muestra una advertencia en la consola para facilitar la depuración.
   if (!csrfToken) {
-    console.warn('Interceptor CSRF: No se encontró la cookie csrfToken. La petición será rechazada por el backend.');
+    console.warn('Interceptor CSRF: No se encontró token en AuthService. La petición será rechazada.');
     return next(req);
   }
 
-  // Si se encontró el token, clona la petición, añade la cabecera y envía la nueva petición.
   const clonedReq = req.clone({
     headers: req.headers.set('X-CSRF-Token', csrfToken),
   });
-
+  console.log('Interceptor CSRF: Token del servicio añadido a la cabecera.');
   return next(clonedReq);
 };
