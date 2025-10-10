@@ -205,7 +205,10 @@ app.post('/api/auth/login', async (req: any, res) => {
   const csrf = Math.random().toString(36).slice(2);
 
   // Guarda el token en la sesión segura (HttpOnly)
-  req.session = { uid: user.id, role: user.role, csrfToken: csrf };
+  //req.session = { uid: user.id, role: user.role, csrfToken: csrf };
+  req.session.uid = user.id;
+  req.session.role = user.role;
+  req.session.csrfToken = csrf;
 
   res.json({ ok: true, csrfToken: csrf });
 });
