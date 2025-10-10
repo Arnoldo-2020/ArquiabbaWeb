@@ -7,6 +7,7 @@ import { AuthService } from '../state/auth.service';
 export const authCsrfInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, next: HttpHandlerFn) => {
   // Inyectamos el AuthService para acceder al token
   const authService = inject(AuthService);
+  console.log(`Interceptor usando AuthService con ID: ${authService.instanceId}`);
 
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
     return next(req);

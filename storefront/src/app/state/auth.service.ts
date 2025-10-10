@@ -14,6 +14,12 @@ export class AuthService {
   private http = inject(HttpClient);
   private base = environment.API_URL;
   private csrfToken: string | null = null;
+  public instanceId: number;
+
+  constructor() {
+    this.instanceId = Math.random();
+    console.log(`%cAuthService CREADO con ID: ${this.instanceId}`, 'color: blue; font-weight: bold;');
+  }
 
   getCsrfToken(): string | null {
     return this.csrfToken;

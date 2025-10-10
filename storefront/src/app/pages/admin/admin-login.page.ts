@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { IonContent, IonList, IonItem, IonInput, IonButton } from '@ionic/angular/standalone';
@@ -11,11 +11,15 @@ import { Router } from '@angular/router';
   imports: [CommonModule, ReactiveFormsModule, IonContent, IonList, IonItem, IonInput, IonButton],
   templateUrl: './admin-login.page.html'
 })
-export class AdminLoginPage {
+export class AdminLoginPage implements OnInit{
   private fb = inject(FormBuilder);
   private auth = inject(AuthService);
   private router = inject(Router);
   loading = false;
+
+  ngOnInit() {
+    console.log(`Login Page usando AuthService con ID: ${this.auth.instanceId}`);
+  }
 
   form = this.fb.group({ email: ['', [Validators.required, Validators.email]], password: ['', Validators.required] });
 
