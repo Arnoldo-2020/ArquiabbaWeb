@@ -191,6 +191,28 @@ function requireRole(role: 'ADMIN' | 'USER') {
  */
 // 
 
+// app.post('/api/auth/login', async (req: any, res) => {
+//   const { email, password } = req.body ?? {};
+//   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+
+//   const user = await prisma.user.findUnique({ where: { email } });
+//   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+//   const ok = await bcrypt.compare(password, user.passwordHash);
+//   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+  
+//   // Genera el token CSRF
+//   const csrf = Math.random().toString(36).slice(2);
+
+//   // Guarda el token en la sesión segura (HttpOnly)
+//   //req.session = { uid: user.id, role: user.role, csrfToken: csrf };
+//   req.session.uid = user.id;
+//   req.session.role = user.role;
+//   req.session.csrfToken = csrf;
+
+//   res.json({ ok: true, csrfToken: csrf });
+// });
+
 app.post('/api/auth/login', async (req: any, res) => {
   const { email, password } = req.body ?? {};
   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
@@ -201,14 +223,13 @@ app.post('/api/auth/login', async (req: any, res) => {
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   
-  // Genera el token CSRF
   const csrf = Math.random().toString(36).slice(2);
 
-  // Guarda el token en la sesión segura (HttpOnly)
-  //req.session = { uid: user.id, role: user.role, csrfToken: csrf };
-  req.session.uid = user.id;
-  req.session.role = user.role;
-  req.session.csrfToken = csrf;
+  req.session = Object.assign(req.session || {}, {
+    uid: user.id,
+    role: user.role,
+    csrfToken: csrf,
+  });
 
   res.json({ ok: true, csrfToken: csrf });
 });
