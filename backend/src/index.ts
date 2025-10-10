@@ -14,6 +14,7 @@ import sharp from 'sharp';
 import cloudinary, { type UploadApiResponse } from './cloudinary';
 import { prisma } from './db';
 import { createProductSchema, updateProductSchema } from './validation';
+import session from 'express-session';
 
 /**
  * ============================
@@ -57,14 +58,27 @@ app.use(rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHea
 
 // 4. Parsers (Cookies y JSON)
 app.use(cookieParser());
-app.use(cookieSession({
-  name: 'session',
-  secret: process.env.SESSION_SECRET || 'change-me',
-  sameSite: 'none',
-  secure: true,
-  httpOnly: true,
-  maxAge: 24 * 60 * 60 * 1000,
-}));
+// app.use(cookieSession({
+//   name: 'session',
+//   secret: process.env.SESSION_SECRET || 'change-me',
+//   sameSite: 'none',
+//   secure: true,
+//   httpOnly: true,
+//   maxAge: 24 * 60 * 60 * 1000,
+// }));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'change-me-to-a-strong-secret',
+    resave: false,
+    saveUninitialized: false, // No crear sesión hasta que algo se guarde
+    cookie: {
+      secure: true, // Obliga HTTPS
+      httpOnly: true, // No accesible por JS en el navegador
+      sameSite: 'none', // Permite cross-site
+      maxAge: 24 * 60 * 60 * 1000, // 1 día
+    },
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
