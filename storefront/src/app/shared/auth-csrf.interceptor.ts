@@ -5,9 +5,8 @@ import { HttpInterceptorFn, HttpRequest, HttpHandlerFn } from '@angular/common/h
 import { AuthService } from '../state/auth.service';
 
 export const authCsrfInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, next: HttpHandlerFn) => {
-  // Inyectamos el AuthService para acceder al token
   const authService = inject(AuthService);
-  console.log(`Interceptor usando AuthService con ID: ${authService.instanceId}`);
+  console.log(`[Interceptor] Interceptando petición: ${req.method} ${req.url}`);
 
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
     return next(req);
@@ -17,13 +16,13 @@ export const authCsrfInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>
   const csrfToken = authService.getCsrfToken();
 
   if (!csrfToken) {
-    console.warn('Interceptor CSRF: No se encontró token en AuthService. La petición será rechazada.');
+    console.warn(`[Interceptor] Token NO encontrado para ${req.url}. Enviando sin cabecera.`);
     return next(req);
   }
 
   const clonedReq = req.clone({
     headers: req.headers.set('X-CSRF-Token', csrfToken),
   });
-  console.log('Interceptor CSRF: Token del servicio añadido a la cabecera.');
+  console.log(`%c[Interceptor] Token encontrado y AÑADIDO a la cabecera para ${req.url}.`, 'color: green; font-weight: bold;');
   return next(clonedReq);
 };

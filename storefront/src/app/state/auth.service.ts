@@ -22,10 +22,12 @@ export class AuthService {
   }
 
   getCsrfToken(): string | null {
+    console.log(`[AuthService - ID: ${this.instanceId}] Interceptor pide el token. Valor actual:`, this.csrfToken);
     return this.csrfToken;
   }
 
   login(email: string, password: string): Observable<{ ok: boolean, csrfToken: string }> {
+    console.log(`[AuthService - ID: ${this.instanceId}] Iniciando petición de login...`);
     return this.http.post<{ ok: boolean, csrfToken: string }>(
       `${this.base}/auth/login`,
       { email, password },
@@ -33,11 +35,13 @@ export class AuthService {
     ).pipe(
       tap(response => {
         this.csrfToken = response.csrfToken;
+        console.log(`%c[AuthService - ID: ${this.instanceId}] Petición de login COMPLETADA. Guardando token:`, 'color: green; font-weight: bold;', this.csrfToken);
       })
     );
   }
 
   logout(): Observable<unknown> {
+    console.log(`[AuthService - ID: ${this.instanceId}] Limpiando token por logout.`);
     this.csrfToken = null; // Limpia el token al hacer logout
     return this.http.post(`${this.base}/auth/logout`, {}, { withCredentials: true });
   }
