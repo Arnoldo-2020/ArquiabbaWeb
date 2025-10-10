@@ -138,6 +138,9 @@ app.get('/api/health', (_req: Request, res: Response) => {
 // }
 
 function requireCsrf(req: any, res: Response, next: NextFunction) {
+
+  console.log(`--- Middleware CSRF activado para: ${req.method} ${req.path} ---`);
+
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
 
   // Rutas exentas de la verificación
@@ -146,16 +149,21 @@ function requireCsrf(req: any, res: Response, next: NextFunction) {
     req.path === '/api/auth/logout' ||
     req.path.startsWith('/api/paypal/')
   ) {
+    console.log('--- Ruta exenta. Verificación CSRF omitida. ---');
     return next();
   }
 
   const tokenFromHeader = req.header('x-csrf-token');
   const tokenFromSession = req.session?.csrfToken;
 
+  console.log('Token recibido en la CABECERA (del frontend):', tokenFromHeader);
+  console.log('Token esperado en la SESIÓN (del backend):', tokenFromSession);
+
   if (!tokenFromHeader || !tokenFromSession || tokenFromHeader !== tokenFromSession) {
     return res.status(403).json({ error: 'CSRF token invalid' });
   }
 
+  console.log('%c¡ÉXITO DE CSRF! Los tokens coinciden.', 'color: green');
   next();
 }
 app.use(requireCsrf);
