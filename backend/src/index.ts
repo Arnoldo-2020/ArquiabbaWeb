@@ -229,6 +229,12 @@ app.get('/api/auth/me', requireAuth, async (req: any, res) => {
  * Productos (públicos)
  * ============================
  */
+
+app.post('/api/products-test', requireAuth, requireRole('ADMIN'), (req, res) => {
+  console.log('--- ¡LA RUTA DE PRUEBA /api/products-test FUE ALCANZADA EXITOSAMENTE! ---');
+  res.json({ success: true, message: 'Test endpoint was reached' });
+});
+
 app.get('/api/products', async (_req, res) => {
   const items = await prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
   res.json(items);
