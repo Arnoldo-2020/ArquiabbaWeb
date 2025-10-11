@@ -4,7 +4,7 @@
 
 export const environment = {
   production: true, // en prod
-  API_URL: 'https://arquiabbaweb.onrender.com/api'
+  API_URL: 'arquiabbaweb-production.up.railway.app/api'
 };
 
 /*
