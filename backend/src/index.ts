@@ -154,18 +154,26 @@ app.post('/api/auth/login', async (req: any, res) => {
   res.json({ ok: true, csrfToken: csrfToken });
 });
 
-app.post('/api/auth/logout', (req: any, res) => {
+// En tu archivo index.ts, reemplaza el app.post('/api/auth/logout', ...)
+
+app.post('/api/auth/logout', (req: any, res: Response) => {
+  // Siempre intentamos limpiar las cookies del frontend
+  res.clearCookie('x-csrf-token-hash', { path: '/' });
+  res.clearCookie('connect.sid'); // Nombre por defecto de la cookie de express-session
+
+  // Verificamos si existe una sesión en el servidor antes de intentar destruirla
   if (req.session) {
     req.session.destroy((err: any) => {
       if (err) {
-        return res.status(500).json({ error: 'Could not log out.' });
+        // En caso de un error al destruir la sesión, lo registramos pero seguimos adelante
+        console.error('Error al destruir la sesión:', err);
       }
-      res.clearCookie('connect.sid'); // El nombre por defecto de la cookie de express-session
-      res.clearCookie('x-csrf-token-hash', { path: '/' });
-      res.status(204).send();
+      // Respondemos que la operación se completó (incluso si hubo un error menor)
+      return res.status(204).send();
     });
   } else {
-    res.status(204).send();
+    // Si no había sesión del lado del servidor, simplemente respondemos que la operación fue exitosa
+    return res.status(204).send();
   }
 });
 
