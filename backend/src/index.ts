@@ -4,17 +4,17 @@ import cors, { CorsOptions } from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
-import cookieSession from 'cookie-session';
+import session from 'express-session';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
 import bcrypt from 'bcrypt';
-import { randomUUID } from 'node:crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
+
 import cloudinary, { type UploadApiResponse } from './cloudinary';
 import { prisma } from './db';
-import { createProductSchema, updateProductSchema } from './validation';
-import session from 'express-session';
+import { updateProductSchema } from './validation';
 
 /**
  * ============================
@@ -23,168 +23,89 @@ import session from 'express-session';
  */
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
-const CSRF_COOKIE = process.env.CSRF_COOKIE || 'csrfToken';
 const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquiabba-web.vercel.app';
-const CURRENCY = process.env.CURRENCY || 'EUR';
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+const CSRF_SECRET = process.env.CSRF_SECRET || 'super-secret-key-change-me-in-production';
+
 
 /**
  * ============================
- * PROXY & SECURITY
+ * PROXY & Middlewares
  * ============================
  */
 app.set('trust proxy', 1);
 
-/**
- * ============================
- * Middlewares base (orden)
- * ============================
- */
-
-// 1. Helmet para cabeceras de seguridad
-app.use(helmet());
-
-// 2. CORS (configuración robusta y centralizada)
 const corsOptions: CorsOptions = {
-  origin: ['http://localhost:4200', FRONT_ORIGIN], // Orígenes permitidos
-  credentials: true, // Permitir cookies y encabezados de autorización
+  origin: [FRONT_ORIGIN, 'http://localhost:4200'],
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 };
+
+app.use(helmet());
 app.use(cors(corsOptions));
-
-// 3. Rate Limiter
-app.use(rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }));
-
-// 4. Parsers (Cookies y JSON)
+app.use(rateLimit({ windowMs: 60_000, max: 120 }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-// app.use(cookieSession({
-//   name: 'session',
-//   secret: process.env.SESSION_SECRET || 'change-me',
-//   sameSite: 'none',
-//   secure: true,
-//   httpOnly: true,
-//   maxAge: 24 * 60 * 60 * 1000,
-// }));
+
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'change-me-to-a-strong-secret',
     resave: false,
-    saveUninitialized: false, // No crear sesión hasta que algo se guarde
+    saveUninitialized: false,
     cookie: {
-      secure: true, // Obliga HTTPS
-      httpOnly: true, // No accesible por JS en el navegador
-      sameSite: 'none', // Permite cross-site
-      maxAge: 24 * 60 * 60 * 1000, // 1 día
+      secure: true,
+      httpOnly: true,
+      sameSite: 'none',
+      maxAge: 24 * 60 * 60 * 1000,
     },
   })
 );
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// 5. No-cache para respuestas de API
 app.use('/api/', (_req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  next();
-});
-
-// (Opcional) Logging de peticiones
-app.use((req, _res, next) => {
-  if (req.path.startsWith('/api/')) {
-    console.log(`[req] ${req.method} ${req.path}`);
-  }
+  res.set('Cache-Control', 'no-store');
   next();
 });
 
 /**
  * ============================
- * Preparar carpeta local de uploads
+ * Lógica CSRF (Stateless)
  * ============================
  */
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+function createCsrfHash(token: string) {
+  return createHmac('sha256', CSRF_SECRET).update(token).digest('hex');
+}
 
-/**
- * ============================
- * Multer (memoria) + filtro de imagen
- * ============================
- */
-const fileFilter: import('multer').Options['fileFilter'] = (_req, file, cb) => {
-  const ok = ['image/png', 'image/jpeg', 'image/webp', 'image/avif'].includes(file.mimetype);
-  return ok ? cb(null, true) : cb(new Error('Invalid image type') as any);
-};
-export const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter,
-});
-
-/**
- * ============================
- * Health
- * ============================
- */
-app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({ ok: true, ts: new Date().toISOString() });
-});
-
-/**
- * ============================
- * CSRF (doble cookie)
- * ============================
- */
-// function requireCsrf(req: Request, res: Response, next: NextFunction) {
-//   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-//   if (
-//     req.path === '/api/auth/login' ||
-//     req.path === '/api/auth/logout' ||
-//     req.path.startsWith('/api/paypal/')
-//   ) return next();
-    
-//   const cookie = (req as any).cookies?.[CSRF_COOKIE];
-//   const header = req.header('x-csrf-token');
-    
-//   if (!cookie || !header || cookie !== header) {
-//     return res.status(403).json({ error: 'CSRF token invalid' });
-//   }
-//   next();
-// }
-
-function requireCsrf(req: any, res: Response, next: NextFunction) {
-
-  console.log(`--- Middleware CSRF activado para: ${req.method} ${req.path} ---`);
-
+function requireCsrf(req: Request, res: Response, next: NextFunction) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-
-  // Rutas exentas de la verificación
-  if (
-    req.path === '/api/auth/login' ||
-    req.path === '/api/auth/logout' ||
-    req.path.startsWith('/api/paypal/')
-  ) {
-    console.log('--- Ruta exenta. Verificación CSRF omitida. ---');
+  
+  const exemptedPaths = ['/api/auth/login', '/api/auth/logout'];
+  if (exemptedPaths.includes(req.path) || req.path.startsWith('/api/paypal/')) {
     return next();
   }
 
   const tokenFromHeader = req.header('x-csrf-token');
-  const tokenFromSession = req.session?.csrfToken;
+  const hashFromCookie = req.cookies['x-csrf-token-hash'];
 
-  console.log('Token recibido en la CABECERA (del frontend):', tokenFromHeader);
-  console.log('Token esperado en la SESIÓN (del backend):', tokenFromSession);
+  if (!tokenFromHeader || !hashFromCookie) {
+    return res.status(403).json({ error: 'CSRF token or hash cookie missing' });
+  }
 
-  if (!tokenFromHeader || !tokenFromSession || tokenFromHeader !== tokenFromSession) {
+  const expectedHash = createCsrfHash(tokenFromHeader);
+
+  if (!timingSafeEqual(Buffer.from(hashFromCookie), Buffer.from(expectedHash))) {
     return res.status(403).json({ error: 'CSRF token invalid' });
   }
 
-  console.log('%c¡ÉXITO DE CSRF! Los tokens coinciden.', 'color: green');
   next();
 }
+
 app.use(requireCsrf);
 
 /**
  * ============================
- * Auth helpers
+ * Auth Helpers
  * ============================
  */
 function requireAuth(req: any, res: Response, next: NextFunction) {
@@ -200,32 +121,12 @@ function requireRole(role: 'ADMIN' | 'USER') {
 
 /**
  * ============================
- * Auth routes
+ * Health & Auth Routes
  * ============================
  */
-// 
-
-// app.post('/api/auth/login', async (req: any, res) => {
-//   const { email, password } = req.body ?? {};
-//   if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
-
-//   const user = await prisma.user.findUnique({ where: { email } });
-//   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-
-//   const ok = await bcrypt.compare(password, user.passwordHash);
-//   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-  
-//   // Genera el token CSRF
-//   const csrf = Math.random().toString(36).slice(2);
-
-//   // Guarda el token en la sesión segura (HttpOnly)
-//   //req.session = { uid: user.id, role: user.role, csrfToken: csrf };
-//   req.session.uid = user.id;
-//   req.session.role = user.role;
-//   req.session.csrfToken = csrf;
-
-//   res.json({ ok: true, csrfToken: csrf });
-// });
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ ok: true, ts: new Date().toISOString() });
+});
 
 app.post('/api/auth/login', async (req: any, res) => {
   const { email, password } = req.body ?? {};
@@ -236,22 +137,36 @@ app.post('/api/auth/login', async (req: any, res) => {
 
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-  
-  const csrf = Math.random().toString(36).slice(2);
 
-  req.session = Object.assign(req.session || {}, {
-    uid: user.id,
-    role: user.role,
-    csrfToken: csrf,
+  req.session.uid = user.id;
+  req.session.role = user.role;
+
+  const csrfToken = randomUUID();
+  const csrfHash = createCsrfHash(csrfToken);
+
+  res.cookie('x-csrf-token-hash', csrfHash, {
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+    maxAge: 24 * 60 * 60 * 1000,
   });
 
-  res.json({ ok: true, csrfToken: csrf });
+  res.json({ ok: true, csrfToken: csrfToken });
 });
 
 app.post('/api/auth/logout', (req: any, res) => {
-  req.session = null;
-  res.clearCookie(CSRF_COOKIE, { path: '/' });
-  res.status(204).send();
+  if (req.session) {
+    req.session.destroy((err: any) => {
+      if (err) {
+        return res.status(500).json({ error: 'Could not log out.' });
+      }
+      res.clearCookie('connect.sid'); // El nombre por defecto de la cookie de express-session
+      res.clearCookie('x-csrf-token-hash', { path: '/' });
+      res.status(204).send();
+    });
+  } else {
+    res.status(204).send();
+  }
 });
 
 app.get('/api/auth/me', requireAuth, async (req: any, res) => {
@@ -264,11 +179,26 @@ app.get('/api/auth/me', requireAuth, async (req: any, res) => {
 
 /**
  * ============================
- * Productos (públicos)
+ * Multer (File Uploads)
  * ============================
  */
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+const fileFilter: import('multer').Options['fileFilter'] = (_req, file, cb) => {
+  const ok = ['image/png', 'image/jpeg', 'image/webp', 'image/avif'].includes(file.mimetype);
+  return ok ? cb(null, true) : cb(new Error('Invalid image type') as any);
+};
+export const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
+});
 
+/**
+ * ============================
+ * Product Routes
+ * ============================
+ */
 app.get('/api/products', async (_req, res) => {
   const items = await prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
   res.json(items);
@@ -280,12 +210,6 @@ app.get('/api/products/:id', async (req, res) => {
   res.json(item);
 });
 
-/**
- * ============================
- * Rutas de Admin (resto del CRUD)
- * ============================
- */
-// ... (el resto de tus rutas de productos y PayPal pueden permanecer sin cambios)
 app.post('/api/products', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req: Request, res: Response) => {
   try {
     const { name, description = '', price, imageUrl } = req.body as {
@@ -297,12 +221,7 @@ app.post('/api/products', requireAuth, requireRole('ADMIN'), upload.single('imag
 
     let url: string | null = null;
     if (req.file) {
-      const buf = await sharp(req.file.buffer)
-        .rotate()
-        .resize({ width: 1200, withoutEnlargement: true })
-        .webp({ quality: 85 })
-        .toBuffer();
-
+      const buf = await sharp(req.file.buffer).rotate().resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
       const filename = randomUUID();
       url = await new Promise<string>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
@@ -341,11 +260,7 @@ app.put('/api/products/:id', requireAuth, requireRole('ADMIN'), upload.single('i
 
     let imageUrl = current.imageUrl;
     if (req.file) {
-      const buf = await sharp(req.file.buffer)
-        .rotate()
-        .resize({ width: 1200, withoutEnlargement: true })
-        .webp({ quality: 85 })
-        .toBuffer();
+      const buf = await sharp(req.file.buffer).rotate().resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
       const filename = randomUUID();
       imageUrl = await new Promise<string>((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
@@ -388,8 +303,11 @@ app.delete('/api/products/:id', requireAuth, requireRole('ADMIN'), async (req, r
   res.status(204).send();
 });
 
-
-// Arrancar
+/**
+ * ============================
+ * Server Start
+ * ============================
+ */
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
 });
