@@ -4,6 +4,16 @@
       <ion-refresher-content></ion-refresher-content>
     </ion-refresher>
 
+      <ion-toolbar>
+      <ion-title>Productos</ion-title>
+
+      <ion-buttons slot="end">
+        <ion-button (click)="testSimplePost()" color="danger" fill="solid">
+          Probar POST
+        </ion-button>
+      </ion-buttons>
+      </ion-toolbar>
+
     <ion-grid fixed>
       <ion-row *ngIf="loading()">
         <ion-col size="12" size-sm="6" size-md="4" size-lg="3" size-xl="2" *ngFor="let i of skeletons">

@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   IonContent, IonGrid, IonRow, IonCol,
-  IonRefresher, IonRefresherContent, IonSkeletonText
+  IonRefresher, IonRefresherContent, IonSkeletonText, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton
 } from '@ionic/angular/standalone';
 
 
@@ -15,7 +15,7 @@ import { ProductCardComponent } from 'src/app/shared/product-card/product-card.c
   standalone: true,
   imports: [
     CommonModule, IonContent, IonGrid, IonRow, IonCol,
-    IonRefresher, IonRefresherContent, IonSkeletonText,
+    IonRefresher, IonRefresherContent, IonSkeletonText, IonToolbar, IonTitle, IonButtons, IonButton,
     ProductCardComponent
   ],
   templateUrl: './products.page.html'
@@ -42,4 +42,19 @@ export class ProductsPage {
       error: () => { (ev.target as any).complete(); }
     });
   }
+
+  // --- FUNCIÓN DE PRUEBA TEMPORAL ---
+  testSimplePost() {
+    console.log('Enviando petición de prueba POST simple...');
+    this.api.testSimplePost().subscribe({
+      next: (res) => {
+        console.log('%cPRUEBA FRONTEND EXITOSA:', 'color: green', res);
+        alert('¡La prueba funcionó! Revisa los logs de Railway para confirmar.');
+      },
+      error: (err) => {
+        console.error('%cPRUEBA FRONTEND FALLÓ:', 'color: red', err);
+        alert('La prueba falló. Revisa la consola y los logs de Railway.');
+      }
+    });
+}
 }
