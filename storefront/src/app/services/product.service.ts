@@ -53,9 +53,4 @@ export class ProductsService {
     return this.http.delete<void>(`${this.base}/${id}`);
   }
 
-  // --- MÉTODO DE PRUEBA TEMPORAL ---
-  testSimplePost(): Observable<any> {
-    const testPayload = { message: 'Hola desde Vercel' };
-    return this.http.post(`${environment.API_URL}/test-simple-post`, testPayload);
-  }
 }
