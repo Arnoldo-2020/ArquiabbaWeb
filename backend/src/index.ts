@@ -16,6 +16,9 @@ import cloudinary, { type UploadApiResponse } from './cloudinary';
 import { prisma } from './db';
 import { updateProductSchema } from './validation';
 
+import { createClient } from 'redis';
+import RedisStore from 'connect-redis';
+
 /**
  * ============================
  * Express App & Constants
@@ -26,6 +29,20 @@ const PORT = Number(process.env.PORT || 3000);
 const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquiabba-web.vercel.app';
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 const CSRF_SECRET = process.env.CSRF_SECRET || 'super-secret-key-change-me-in-production';
+
+// Inicializa el cliente de Redis
+const redisClient = createClient({
+  url: process.env.REDIS_URL, // Usaremos una variable de entorno
+});
+redisClient.connect().catch(console.error);
+
+const RedisStoreClass = RedisStore(session);
+
+// Inicializa el almacén de sesiones de Redis
+const redisStore = new RedisStoreClass({
+  client: redisClient,
+  prefix: 'myapp:',
+});
 
 
 /**
@@ -51,6 +68,7 @@ app.use(cookieParser());
 
 app.use(
   session({
+    store: redisStore, // Le decimos a express-session que use Redis
     secret: process.env.SESSION_SECRET || 'change-me-to-a-strong-secret',
     resave: false,
     saveUninitialized: false,
@@ -58,7 +76,7 @@ app.use(
       secure: true,
       httpOnly: true,
       sameSite: 'none',
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: 24 * 60 * 60 * 1000, // 1 día
     },
   })
 );
