@@ -5,6 +5,8 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
+import { createClient } from 'redis';
+import RedisStore from 'connect-redis';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -15,9 +17,6 @@ import sharp from 'sharp';
 import cloudinary, { type UploadApiResponse } from './cloudinary';
 import { prisma } from './db';
 import { updateProductSchema } from './validation';
-
-import { createClient } from 'redis';
-import RedisStore from 'connect-redis';
 
 /**
  * ============================
@@ -30,28 +29,6 @@ const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquiabba-web.vercel.a
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 const CSRF_SECRET = process.env.CSRF_SECRET || 'super-secret-key-change-me-in-production';
 
-console.log('--- Iniciando configuración de Redis ---');
-console.log('Intentando conectar con la URL de Redis:', process.env.REDIS_URL ? 'URL encontrada' : '¡URL NO ENCONTRADA!');
-
-// Inicializa el cliente de Redis
-const redisClient = createClient({
-  url: process.env.REDIS_URL, // Usaremos una variable de entorno
-});
-
-redisClient.on('error', (err) => console.error('--- ERROR DEL CLIENTE DE REDIS ---', err));
-redisClient.on('connect', () => console.log('--- Conectando a Redis... ---'));
-redisClient.on('ready', () => console.log('%c--- ¡ÉXITO! Conexión con Redis establecida y lista. ---', 'color: green'));
-
-redisClient.connect().catch(console.error);
-
-const RedisStoreClass = RedisStore(session);
-
-// Inicializa el almacén de sesiones de Redis
-const redisStore = new RedisStoreClass({
-  client: redisClient,
-  prefix: 'myapp:',
-});
-
 
 /**
  * ============================
@@ -63,44 +40,40 @@ app.set('trust proxy', 1);
 const corsOptions: CorsOptions = {
   origin: [FRONT_ORIGIN, 'http://localhost:4200'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 };
 
-//app.use(helmet());
+// app.use(helmet()); // Desactivado temporalmente para aislar el problema. Puedes volver a activarlo después.
 app.use(cors(corsOptions));
 app.use(rateLimit({ windowMs: 60_000, max: 120 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+/**
+ * ============================
+ * Configuración de Sesión con Redis
+ * ============================
+ */
+const redisClient = createClient({ url: process.env.REDIS_URL });
+const RedisStoreClass = RedisStore(session);
+const redisStore = new RedisStoreClass({ client: redisClient, prefix: 'myapp:' });
+
 app.use(
   session({
-    store: redisStore, // Le decimos a express-session que use Redis
+    store: redisStore,
     secret: process.env.SESSION_SECRET || 'change-me-to-a-strong-secret',
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      secure: true,
-      httpOnly: true,
-      sameSite: 'none',
-      maxAge: 24 * 60 * 60 * 1000, // 1 día
-    },
+    cookie: { secure: true, httpOnly: true, sameSite: 'none', maxAge: 24 * 60 * 60 * 1000 },
   })
 );
 
-app.use('/api/', (_req, res, next) => {
-  res.set('Cache-Control', 'no-store');
-  next();
-});
 
 /**
  * ============================
  * Lógica y Helpers de Seguridad
  * ============================
  */
-
-// --- Lógica CSRF (Stateless) ---
 function createCsrfHash(token: string) {
   return createHmac('sha256', CSRF_SECRET).update(token).digest('hex');
 }
@@ -126,7 +99,6 @@ function requireCsrf(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// --- Auth Helpers ---
 function requireAuth(req: any, res: Response, next: NextFunction) {
   if (req.session?.uid) return next();
   return res.status(401).json({ error: 'Unauthenticated' });
@@ -139,7 +111,6 @@ function requireRole(role: 'ADMIN' | 'USER') {
   };
 }
 
-// --- Multer (File Uploads) ---
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const fileFilter: import('multer').Options['fileFilter'] = (_req, file, cb) => {
   const ok = ['image/png', 'image/jpeg', 'image/webp', 'image/avif'].includes(file.mimetype);
@@ -201,16 +172,7 @@ app.post('/api/auth/logout', (req: any, res: Response) => {
   }
 });
 
-// --- Rutas Protegidas ---
-app.get('/api/auth/me', requireAuth, async (req: any, res) => {
-  const me = await prisma.user.findUnique({
-    where: { id: req.session.uid },
-    select: { id: true, email: true, role: true },
-  });
-  res.json(me);
-});
-
-// --- Rutas de Productos (Públicas y Protegidas) ---
+// --- Rutas de Productos Públicas ---
 app.get('/api/products', async (_req, res) => {
   const items = await prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
   res.json(items);
@@ -220,6 +182,15 @@ app.get('/api/products/:id', async (req, res) => {
   const item = await prisma.product.findUnique({ where: { id: req.params.id } });
   if (!item) return res.status(404).json({ error: 'Not found' });
   res.json(item);
+});
+
+// --- Rutas Protegidas ---
+app.get('/api/auth/me', requireAuth, async (req: any, res) => {
+  const me = await prisma.user.findUnique({
+    where: { id: req.session.uid },
+    select: { id: true, email: true, role: true },
+  });
+  res.json(me);
 });
 
 app.post(
@@ -338,9 +309,25 @@ app.delete(
 
 /**
  * ============================
- * Server Start
+ * Arranque del Servidor Robusto
  * ============================
  */
-app.listen(PORT, () => {
-  console.log(`API running on http://localhost:${PORT}`);
-});
+async function startServer() {
+  try {
+    redisClient.on('error', (err) => {
+      console.error('Error de Conexión con Redis:', err);
+    });
+
+    await redisClient.connect();
+    console.log('Conexión con Redis establecida.');
+
+    app.listen(PORT, () => {
+      console.log(`Servidor escuchando en el puerto ${PORT}`);
+    });
+  } catch (err) {
+    console.error('Fallo al iniciar el servidor:', err);
+    process.exit(1);
+  }
+}
+
+startServer();
