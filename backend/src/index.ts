@@ -73,6 +73,15 @@ app.use('/api/', (_req, res, next) => {
  * Lógica CSRF (Stateless)
  * ============================
  */
+
+//ENDPOINT DE PRUEBA SIMPLE (SIN SEGURIDAD)
+
+app.post('/api/test-simple-post', (req, res) => {
+  // Si este log aparece en Railway, hemos encontrado la clave del problema.
+  console.log('--- ¡ÉXITO! La petición POST simple a /api/test-simple-post LLEGÓ al servidor. ---');
+  res.status(200).json({ message: 'Simple POST test successful!' });
+});
+
 function createCsrfHash(token: string) {
   return createHmac('sha256', CSRF_SECRET).update(token).digest('hex');
 }
