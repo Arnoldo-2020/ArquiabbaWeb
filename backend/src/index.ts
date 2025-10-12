@@ -67,7 +67,7 @@ const corsOptions: CorsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
 };
 
-app.use(helmet());
+//app.use(helmet());
 app.use(cors(corsOptions));
 app.use(rateLimit({ windowMs: 60_000, max: 120 }));
 app.use(express.json());
