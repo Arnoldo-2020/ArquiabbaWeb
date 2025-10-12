@@ -30,7 +30,7 @@ const CSRF_SECRET = process.env.CSRF_SECRET || 'super-secret-key-change-me-in-pr
 
 /**
  * ============================
- * PROXY & Middlewares
+ * Middlewares Globales
  * ============================
  */
 app.set('trust proxy', 1);
@@ -70,30 +70,16 @@ app.use('/api/', (_req, res, next) => {
 
 /**
  * ============================
- * Lógica CSRF (Stateless)
+ * Lógica y Helpers de Seguridad
  * ============================
  */
 
-//ENDPOINT DE PRUEBA SIMPLE (SIN SEGURIDAD)
-
-app.post('/api/test-simple-post', (req, res) => {
-  // Si este log aparece en Railway, hemos encontrado la clave del problema.
-  console.log('--- ¡ÉXITO! La petición POST simple a /api/test-simple-post LLEGÓ al servidor. ---');
-  res.status(200).json({ message: 'Simple POST test successful!' });
-});
-
+// --- Lógica CSRF (Stateless) ---
 function createCsrfHash(token: string) {
   return createHmac('sha256', CSRF_SECRET).update(token).digest('hex');
 }
 
 function requireCsrf(req: Request, res: Response, next: NextFunction) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  
-  const exemptedPaths = ['/api/auth/login', '/api/auth/logout'];
-  if (exemptedPaths.includes(req.path) || req.path.startsWith('/api/paypal/')) {
-    return next();
-  }
-
   const tokenFromHeader = req.header('x-csrf-token');
   const hashFromCookie = req.cookies['x-csrf-token-hash'];
 
@@ -103,24 +89,23 @@ function requireCsrf(req: Request, res: Response, next: NextFunction) {
 
   const expectedHash = createCsrfHash(tokenFromHeader);
 
-  if (!timingSafeEqual(Buffer.from(hashFromCookie), Buffer.from(expectedHash))) {
+  try {
+    if (!timingSafeEqual(Buffer.from(hashFromCookie), Buffer.from(expectedHash))) {
+      return res.status(403).json({ error: 'CSRF token invalid' });
+    }
+  } catch (e) {
     return res.status(403).json({ error: 'CSRF token invalid' });
   }
 
   next();
 }
 
-app.use(requireCsrf);
-
-/**
- * ============================
- * Auth Helpers
- * ============================
- */
+// --- Auth Helpers ---
 function requireAuth(req: any, res: Response, next: NextFunction) {
   if (req.session?.uid) return next();
   return res.status(401).json({ error: 'Unauthenticated' });
 }
+
 function requireRole(role: 'ADMIN' | 'USER') {
   return (req: any, res: Response, next: NextFunction) => {
     if (req.session?.role === role) return next();
@@ -128,14 +113,27 @@ function requireRole(role: 'ADMIN' | 'USER') {
   };
 }
 
+// --- Multer (File Uploads) ---
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const fileFilter: import('multer').Options['fileFilter'] = (_req, file, cb) => {
+  const ok = ['image/png', 'image/jpeg', 'image/webp', 'image/avif'].includes(file.mimetype);
+  return ok ? cb(null, true) : cb(new Error('Invalid image type') as any);
+};
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
+});
+
+
 /**
  * ============================
- * Health & Auth Routes
+ * RUTAS DE LA APLICACIÓN
  * ============================
  */
-app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({ ok: true, ts: new Date().toISOString() });
-});
+
+// --- Rutas Públicas y de Autenticación (Exentas de CSRF) ---
+app.get('/api/health', (_req: Request, res: Response) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 app.post('/api/auth/login', async (req: any, res) => {
   const { email, password } = req.body ?? {};
@@ -163,29 +161,21 @@ app.post('/api/auth/login', async (req: any, res) => {
   res.json({ ok: true, csrfToken: csrfToken });
 });
 
-// En tu archivo index.ts, reemplaza el app.post('/api/auth/logout', ...)
-
 app.post('/api/auth/logout', (req: any, res: Response) => {
-  // Siempre intentamos limpiar las cookies del frontend
   res.clearCookie('x-csrf-token-hash', { path: '/' });
-  res.clearCookie('connect.sid'); // Nombre por defecto de la cookie de express-session
+  res.clearCookie('connect.sid');
 
-  // Verificamos si existe una sesión en el servidor antes de intentar destruirla
   if (req.session) {
     req.session.destroy((err: any) => {
-      if (err) {
-        // En caso de un error al destruir la sesión, lo registramos pero seguimos adelante
-        console.error('Error al destruir la sesión:', err);
-      }
-      // Respondemos que la operación se completó (incluso si hubo un error menor)
+      if (err) console.error('Error al destruir la sesión:', err);
       return res.status(204).send();
     });
   } else {
-    // Si no había sesión del lado del servidor, simplemente respondemos que la operación fue exitosa
     return res.status(204).send();
   }
 });
 
+// --- Rutas Protegidas ---
 app.get('/api/auth/me', requireAuth, async (req: any, res) => {
   const me = await prisma.user.findUnique({
     where: { id: req.session.uid },
@@ -194,28 +184,7 @@ app.get('/api/auth/me', requireAuth, async (req: any, res) => {
   res.json(me);
 });
 
-/**
- * ============================
- * Multer (File Uploads)
- * ============================
- */
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-const fileFilter: import('multer').Options['fileFilter'] = (_req, file, cb) => {
-  const ok = ['image/png', 'image/jpeg', 'image/webp', 'image/avif'].includes(file.mimetype);
-  return ok ? cb(null, true) : cb(new Error('Invalid image type') as any);
-};
-export const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter,
-});
-
-/**
- * ============================
- * Product Routes
- * ============================
- */
+// --- Rutas de Productos (Públicas y Protegidas) ---
 app.get('/api/products', async (_req, res) => {
   const items = await prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
   res.json(items);
@@ -227,98 +196,119 @@ app.get('/api/products/:id', async (req, res) => {
   res.json(item);
 });
 
-app.post('/api/products', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req: Request, res: Response) => {
-  try {
-    const { name, description = '', price, imageUrl } = req.body as {
-      name?: string; description?: string; price?: string | number; imageUrl?: string;
-    };
-    if (!name || price === undefined || price === null) {
-      return res.status(400).json({ error: 'name and price are required' });
-    }
+app.post(
+  '/api/products',
+  requireAuth,
+  requireRole('ADMIN'),
+  upload.single('image'),
+  requireCsrf,
+  async (req: Request, res: Response) => {
+    try {
+      const { name, description = '', price, imageUrl } = req.body as {
+        name?: string; description?: string; price?: string | number; imageUrl?: string;
+      };
+      if (!name || price === undefined || price === null) {
+        return res.status(400).json({ error: 'name and price are required' });
+      }
 
-    let url: string | null = null;
-    if (req.file) {
-      const buf = await sharp(req.file.buffer).rotate().resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
-      const filename = randomUUID();
-      url = await new Promise<string>((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          { folder: 'products', public_id: filename, overwrite: true, resource_type: 'image' },
-          (err, result?: UploadApiResponse) => {
-            if (err || !result?.secure_url) return reject(err ?? new Error('Upload failed'));
-            resolve(result.secure_url);
-          }
-        );
-        stream.end(buf);
+      let url: string | null = null;
+      if (req.file) {
+        const buf = await sharp(req.file.buffer).rotate().resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
+        const filename = randomUUID();
+        url = await new Promise<string>((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder: 'products', public_id: filename, overwrite: true, resource_type: 'image' },
+            (err, result?: UploadApiResponse) => {
+              if (err || !result?.secure_url) return reject(err ?? new Error('Upload failed'));
+              resolve(result.secure_url);
+            }
+          );
+          stream.end(buf);
+        });
+      } else if (imageUrl) {
+        url = imageUrl.trim();
+      } else {
+        return res.status(400).json({ error: 'image is required (file or imageUrl)' });
+      }
+
+      const created = await prisma.product.create({
+        data: { name, description, price: Number(price), imageUrl: url },
       });
-    } else if (imageUrl) {
-      url = imageUrl.trim();
-    } else {
-      return res.status(400).json({ error: 'image is required (file or imageUrl)' });
+      return res.status(201).json(created);
+    } catch (e: any) {
+      console.error(e);
+      return res.status(400).json({ error: e?.message ?? 'bad request' });
     }
-
-    const created = await prisma.product.create({
-      data: { name, description, price: Number(price), imageUrl: url },
-    });
-    return res.status(201).json(created);
-  } catch (e: any) {
-    console.error(e);
-    return res.status(400).json({ error: e?.message ?? 'bad request' });
   }
-});
+);
 
-app.put('/api/products/:id', requireAuth, requireRole('ADMIN'), upload.single('image'), async (req: Request, res: Response) => {
-  try {
+app.put(
+  '/api/products/:id',
+  requireAuth,
+  requireRole('ADMIN'),
+  upload.single('image'),
+  requireCsrf,
+  async (req: Request, res: Response) => {
+    try {
+      const id = req.params.id;
+      const parsed = updateProductSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+      const current = await prisma.product.findUnique({ where: { id } });
+      if (!current) return res.status(404).json({ error: 'Not found' });
+
+      let imageUrl = current.imageUrl;
+      if (req.file) {
+        const buf = await sharp(req.file.buffer).rotate().resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
+        const filename = randomUUID();
+        imageUrl = await new Promise<string>((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder: 'products', public_id: filename, overwrite: true, resource_type: 'image' },
+            (err, result?: UploadApiResponse) => {
+              if (err || !result?.secure_url) return reject(err ?? new Error('Upload failed'));
+              resolve(result.secure_url);
+            }
+          );
+          stream.end(buf);
+        });
+      } else if (typeof (req.body as any).imageUrl === 'string' && (req.body as any).imageUrl.trim() !== '') {
+        imageUrl = (req.body as any).imageUrl.trim();
+      }
+
+      const data: Record<string, any> = {};
+      if (parsed.data.name !== undefined) data.name = parsed.data.name;
+      if (parsed.data.description !== undefined) data.description = parsed.data.description;
+      if (parsed.data.price !== undefined) data.price = parsed.data.price;
+      data.imageUrl = imageUrl;
+      
+      const updated = await prisma.product.update({ where: { id }, data });
+      return res.json(updated);
+    } catch (e: any) {
+      console.error(e);
+      return res.status(400).json({ error: e?.message ?? 'bad request' });
+    }
+  }
+);
+
+app.delete(
+  '/api/products/:id',
+  requireAuth,
+  requireRole('ADMIN'),
+  requireCsrf,
+  async (req, res) => {
     const id = req.params.id;
-    const parsed = updateProductSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-
     const current = await prisma.product.findUnique({ where: { id } });
     if (!current) return res.status(404).json({ error: 'Not found' });
 
-    let imageUrl = current.imageUrl;
-    if (req.file) {
-      const buf = await sharp(req.file.buffer).rotate().resize({ width: 1200, withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
-      const filename = randomUUID();
-      imageUrl = await new Promise<string>((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          { folder: 'products', public_id: filename, overwrite: true, resource_type: 'image' },
-          (err, result?: UploadApiResponse) => {
-            if (err || !result?.secure_url) return reject(err ?? new Error('Upload failed'));
-            resolve(result.secure_url);
-          }
-        );
-        stream.end(buf);
-      });
-    } else if (typeof (req.body as any).imageUrl === 'string' && (req.body as any).imageUrl.trim() !== '') {
-      imageUrl = (req.body as any).imageUrl.trim();
+    await prisma.product.delete({ where: { id } });
+    if (current.imageUrl?.startsWith('/uploads/')) {
+      const p = path.join(UPLOAD_DIR, path.basename(current.imageUrl));
+      fs.unlink(p, () => {});
     }
-
-    const data: Record<string, any> = {};
-    if (parsed.data.name !== undefined) data.name = parsed.data.name;
-    if (parsed.data.description !== undefined) data.description = parsed.data.description;
-    if (parsed.data.price !== undefined) data.price = parsed.data.price;
-    data.imageUrl = imageUrl;
-    
-    const updated = await prisma.product.update({ where: { id }, data });
-    return res.json(updated);
-  } catch (e: any) {
-    console.error(e);
-    return res.status(400).json({ error: e?.message ?? 'bad request' });
+    res.status(204).send();
   }
-});
+);
 
-app.delete('/api/products/:id', requireAuth, requireRole('ADMIN'), async (req, res) => {
-  const id = req.params.id;
-  const current = await prisma.product.findUnique({ where: { id } });
-  if (!current) return res.status(404).json({ error: 'Not found' });
-
-  await prisma.product.delete({ where: { id } });
-  if (current.imageUrl?.startsWith('/uploads/')) {
-    const p = path.join(UPLOAD_DIR, path.basename(current.imageUrl));
-    fs.unlink(p, () => {});
-  }
-  res.status(204).send();
-});
 
 /**
  * ============================
