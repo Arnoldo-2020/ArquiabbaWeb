@@ -30,10 +30,18 @@ const FRONT_ORIGIN = process.env.FRONT_ORIGIN || 'https://arquiabba-web.vercel.a
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 const CSRF_SECRET = process.env.CSRF_SECRET || 'super-secret-key-change-me-in-production';
 
+console.log('--- Iniciando configuración de Redis ---');
+console.log('Intentando conectar con la URL de Redis:', process.env.REDIS_URL ? 'URL encontrada' : '¡URL NO ENCONTRADA!');
+
 // Inicializa el cliente de Redis
 const redisClient = createClient({
   url: process.env.REDIS_URL, // Usaremos una variable de entorno
 });
+
+redisClient.on('error', (err) => console.error('--- ERROR DEL CLIENTE DE REDIS ---', err));
+redisClient.on('connect', () => console.log('--- Conectando a Redis... ---'));
+redisClient.on('ready', () => console.log('%c--- ¡ÉXITO! Conexión con Redis establecida y lista. ---', 'color: green'));
+
 redisClient.connect().catch(console.error);
 
 const RedisStoreClass = RedisStore(session);
