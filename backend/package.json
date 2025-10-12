@@ -6,7 +6,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "npx prisma migrate deploy && node dist/index.js",
-    "postinstall": "npx prisma generate",
+    "_postinstall": "npx prisma generate",
     "migrate:deploy": "prisma migrate deploy",
     "seed:admins": "ts-node src/seed-admins.ts"
   },
@@ -14,7 +14,7 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^4.16.2",
+    "@prisma/client": "^5.16.1",
     "bcrypt": "^5.0.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.37.0",
@@ -22,6 +22,21 @@
     "cookie-session": "^2.0.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "express-rate-limit": "^6.7.0"
+    "express-rate-limit": "^6.7.0",
+    "sharp": "^0.34.4",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/express-session": "^1.18.2",
+    "@types/helmet": "^0.0.48",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.7.2",
+    "prisma": "^5.16.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }
