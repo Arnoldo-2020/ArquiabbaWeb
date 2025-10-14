@@ -35,15 +35,19 @@ const CSRF_SECRET = process.env.CSRF_SECRET || 'super-secret-key-change-me-in-pr
  * Middlewares Globales
  * ============================
  */
-app.set('trust proxy', 1);
 
 const corsOptions: CorsOptions = {
   origin: [FRONT_ORIGIN, 'http://localhost:4200'],
   credentials: true,
 };
 
-//app.use(helmet());
 app.use(cors(corsOptions));
+app.set('trust proxy', 1);
+
+
+
+//app.use(helmet());
+
 app.use(rateLimit({ windowMs: 60_000, max: 120 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
