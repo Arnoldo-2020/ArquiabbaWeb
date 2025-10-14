@@ -36,13 +36,15 @@ const CSRF_SECRET = process.env.CSRF_SECRET || 'super-secret-key-change-me-in-pr
  * ============================
  */
 
+app.set('trust proxy', 1);
+
 const corsOptions: CorsOptions = {
   origin: [FRONT_ORIGIN, 'http://localhost:4200'],
   credentials: true,
 };
 
 app.use(cors(corsOptions));
-app.set('trust proxy', 1);
+
 
 
 
