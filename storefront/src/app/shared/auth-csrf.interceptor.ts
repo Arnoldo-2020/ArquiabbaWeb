@@ -1,28 +1,54 @@
-// En src/app/shared/auth-csrf.interceptor.ts
-
 import { inject } from '@angular/core';
-import { HttpInterceptorFn, HttpRequest, HttpHandlerFn } from '@angular/common/http';
+import {
+  HttpInterceptorFn,
+  HttpRequest,
+  HttpHandlerFn,
+  HttpEvent,
+} from '@angular/common/http';
 import { AuthService } from '../state/auth.service';
+import { Observable } from 'rxjs';
 
-export const authCsrfInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, next: HttpHandlerFn) => {
+export const authCsrfInterceptor: HttpInterceptorFn = (
+  req: HttpRequest<unknown>,
+  next: HttpHandlerFn
+): Observable<HttpEvent<unknown>> => {
   const authService = inject(AuthService);
+
   console.log(`[Interceptor] Interceptando petición: ${req.method} ${req.url}`);
 
-  if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+  // --- 1️⃣ Si la ruta es de login o registro, no agregamos token ---
+  if (req.url.includes('/auth/login') || req.url.includes('/auth/register')) {
+    console.warn(`[Interceptor] Petición de autenticación detectada. Enviando sin token.`);
     return next(req);
   }
 
-  // Obtenemos el token directamente del servicio
+  // --- 2️⃣ Clonamos la solicitud para añadir tokens si existen ---
+  let clonedReq = req;
+
+  // Token CSRF (si lo usas para sesiones basadas en cookies)
   const csrfToken = authService.getCsrfToken();
-
-  if (!csrfToken) {
-    console.warn(`[Interceptor] Token NO encontrado para ${req.url}. Enviando sin cabecera.`);
-    return next(req);
+  if (csrfToken) {
+    clonedReq = clonedReq.clone({
+      setHeaders: { 'X-CSRF-Token': csrfToken },
+    });
   }
 
-  const clonedReq = req.clone({
-    headers: req.headers.set('X-CSRF-Token', csrfToken),
-  });
-  console.log(`%c[Interceptor] Token encontrado y AÑADIDO a la cabecera para ${req.url}.`, 'color: green; font-weight: bold;');
+  // Token JWT (usado por tu backend actual)
+  const jwtToken = authService.getToken(); // asegúrate que AuthService tenga este método
+  if (jwtToken) {
+    clonedReq = clonedReq.clone({
+      setHeaders: {
+        Authorization: `Bearer ${jwtToken}`,
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      },
+    });
+    console.log(
+      `%c[Interceptor] JWT encontrado y añadido a ${req.url}`,
+      'color: green; font-weight: bold;'
+    );
+  } else {
+    console.warn(`[Interceptor] JWT no encontrado para ${req.url}`);
+  }
+
   return next(clonedReq);
 };
