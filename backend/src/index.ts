@@ -50,7 +50,7 @@ const corsOptions: CorsOptions = {
   allowedHeaders: [
     'Content-Type', 
     'Authorization', 
-    'x-csrf-token' // ¡Esta es la cabecera clave que faltaba!
+    'x-csrf-token' 
   ],
   
   // Métodos HTTP permitidos por tu API.
@@ -79,7 +79,7 @@ import RedisStore from 'connect-redis';
 
 // 2. Crea el cliente de Redis y conéctalo.
 const redisClient = createClient({ url: process.env.REDIS_URL });
-redisClient.connect().catch(console.error);
+//redisClient.connect().catch(console.error);
 
 // 3. Instancia la tienda directamente.
 const redisStore = new RedisStore({
