@@ -218,6 +218,102 @@ app.post(
 );
 
 // =============================
+// 🗑️ ELIMINAR PRODUCTO
+// =============================
+app.delete(
+  '/api/products/:id',
+  requireAuth, // Asegura que solo usuarios autenticados puedan borrar
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params; // Obtenemos el ID del producto desde la URL
+
+      // Verificamos si el producto existe antes de intentar borrarlo
+      const product = await prisma.product.findUnique({
+        where: { id },
+      });
+
+      if (!product) {
+        return res.status(404).json({ error: 'Producto no encontrado' });
+      }
+
+      // Borramos el producto de la base de datos
+      await prisma.product.delete({
+        where: { id },
+      });
+      
+      // Opcional: Si quieres borrar también la imagen de Cloudinary
+      // (requiere guardar el public_id de la imagen al crearla)
+      // if (product.imagePublicId) {
+      //   await cloudinary.uploader.destroy(product.imagePublicId);
+      // }
+
+      // Respondemos que la operación fue exitosa sin contenido
+      res.status(204).send();
+
+    } catch (err) {
+      console.error('Error al eliminar producto:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+);
+
+// =============================
+// ✏️ EDITAR PRODUCTO
+// =============================
+app.put(
+  '/api/products/:id',
+  requireAuth, // Protege la ruta, solo para usuarios autenticados
+  upload.single('image'), // Permite que se envíe una nueva imagen (opcional)
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params; // ID del producto a editar
+      const { name, price, description } = req.body; // Nuevos datos del producto
+
+      // 1. Busca el producto actual para asegurarte de que existe
+      const currentProduct = await prisma.product.findUnique({
+        where: { id },
+      });
+
+      if (!currentProduct) {
+        return res.status(404).json({ error: 'Producto no encontrado' });
+      }
+
+      // 2. Prepara los datos a actualizar
+      const dataToUpdate: {
+        name: string;
+        price: number;
+        description: string;
+        imageUrl?: string;
+      } = {
+        name,
+        price: Number(price),
+        description,
+      };
+
+      // 3. Si se sube una nueva imagen, actualiza la URL
+      if (req.file) {
+        dataToUpdate.imageUrl = req.file.path; // Nueva URL de Cloudinary
+        
+        // Opcional: Borrar la imagen antigua de Cloudinary para ahorrar espacio
+        // Nota: Esto requiere una lógica más avanzada para extraer el public_id de la URL.
+      }
+
+      // 4. Actualiza el producto en la base de datos
+      const updatedProduct = await prisma.product.update({
+        where: { id },
+        data: dataToUpdate,
+      });
+
+      res.json(updatedProduct); // Devuelve el producto actualizado
+      
+    } catch (err) {
+      console.error('Error al actualizar producto:', err);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  }
+);
+
+// =============================
 // 🚀 INICIO DEL SERVIDOR
 // =============================
 async function startServer() {
