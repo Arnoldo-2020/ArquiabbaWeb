@@ -8,7 +8,6 @@ import cookieParser from 'cookie-parser';
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
-import { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { prisma } from './db';
 
@@ -25,18 +24,15 @@ app.use(cookieParser());
 // =============================
 // 🔐 REDIS + SESIONES
 // =============================
-
-// Cliente Redis moderno (v4)
 const redisClient = createClient({ url: process.env.REDIS_URL });
 redisClient.on('error', (err) => console.error('Redis Client Error:', err));
 
-// Crear instancia de store compatible con v7
 const RedisStore = new (RedisStoreLib as any)({
   client: redisClient,
   prefix: 'session:',
 });
 
-// ✅ Extender tipos de sesión (sin conflicto de modificadores)
+// ✅ Tipado de sesión extendido
 declare module 'express-session' {
   interface SessionData {
     userId: string;
@@ -82,8 +78,8 @@ const UPLOAD_DIR = path.resolve('./uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
+  filename: (_req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
 });
 const upload = multer({ storage });
 
@@ -101,14 +97,16 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     try {
-      const token = authHeader.split(' ')[1];
+      const token = authHeader.substring(7); // eliminar "Bearer "
       const decoded = jwt.verify(
         token,
         process.env.JWT_SECRET || 'supersecret'
       ) as any;
-      (req as any).user = decoded;
+
+      (req as any).user = { id: decoded.id, role: decoded.role };
       return next();
-    } catch {
+    } catch (err) {
+      console.error('JWT verification failed:', err);
       return res.status(401).json({ error: 'Token inválido o expirado' });
     }
   }
@@ -132,7 +130,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   if (!valid) return res.status(401).json({ error: 'Credenciales inválidas' });
 
   // Guardar sesión
-  req.session.userId = String(user.id); // ✅ asegurar tipo string
+  req.session.userId = String(user.id);
   req.session.role = user.role ?? 'user';
 
   // Crear JWT
@@ -153,23 +151,17 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 // =============================
 app.get('/api/auth/me', requireAuth, async (req: Request, res: Response) => {
   try {
-    // req.user viene del middleware requireAuth (sesión o JWT)
     const userData = (req as any).user;
-
     if (!userData?.id) {
       return res.status(401).json({ error: 'No autenticado' });
     }
 
-    // Buscar usuario en la base de datos
     const user = await prisma.user.findUnique({
       where: { id: userData.id },
       select: { id: true, email: true, role: true },
     });
 
-    if (!user) {
-      return res.status(404).json({ error: 'Usuario no encontrado' });
-    }
-
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
     res.json(user);
   } catch (err) {
     console.error('Error en /auth/me:', err);
@@ -177,18 +169,14 @@ app.get('/api/auth/me', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-
 // =============================
 // 🧾 PRODUCTOS
 // =============================
-
-// Obtener todos
 app.get('/api/products', async (_req: Request, res: Response) => {
   const products = await prisma.product.findMany();
   res.json(products);
 });
 
-// Crear producto
 app.post(
   '/api/products',
   requireAuth,
@@ -218,7 +206,7 @@ app.post(
 );
 
 // =============================
-// 📤 SERVIR ARCHIVOS ESTÁTICOS
+// 📤 ARCHIVOS ESTÁTICOS
 // =============================
 app.use('/uploads', express.static(UPLOAD_DIR));
 
