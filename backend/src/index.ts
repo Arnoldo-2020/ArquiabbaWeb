@@ -149,6 +149,36 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 });
 
 // =============================
+// 👤 OBTENER USUARIO LOGUEADO
+// =============================
+app.get('/api/auth/me', requireAuth, async (req: Request, res: Response) => {
+  try {
+    // req.user viene del middleware requireAuth (sesión o JWT)
+    const userData = (req as any).user;
+
+    if (!userData?.id) {
+      return res.status(401).json({ error: 'No autenticado' });
+    }
+
+    // Buscar usuario en la base de datos
+    const user = await prisma.user.findUnique({
+      where: { id: userData.id },
+      select: { id: true, email: true, role: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error('Error en /auth/me:', err);
+    res.status(500).json({ error: 'Error obteniendo usuario' });
+  }
+});
+
+
+// =============================
 // 🧾 PRODUCTOS
 // =============================
 
