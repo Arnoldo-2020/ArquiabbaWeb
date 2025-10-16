@@ -5,10 +5,10 @@ import { createClient } from 'redis';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
-import fs from 'fs';
-import path from 'path';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import { prisma } from './db';
 
 // =============================
@@ -16,12 +16,6 @@ import { prisma } from './db';
 // =============================
 const app = express();
 const PORT = process.env.PORT || 3000;
-const BASE_URL =
-  process.env.BASE_URL ||
-  (process.env.NODE_ENV === 'production'
-    ? 'https://arquibabbaweb-production.up.railway.app'
-    : `http://localhost:${PORT}`);
-
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -33,6 +27,7 @@ app.use(cookieParser());
 const redisClient = createClient({ url: process.env.REDIS_URL });
 redisClient.on('error', (err) => console.error('Redis Client Error:', err));
 
+// @ts-ignore - Se ignora el falso error de tipos de connect-redis
 const RedisStore = new (RedisStoreLib as any)({
   client: redisClient,
   prefix: 'session:',
@@ -78,21 +73,23 @@ app.use(
 );
 
 // =============================
-// 📁 SUBIDA DE IMÁGENES
+// ☁️ SUBIDA DE IMÁGENES A CLOUDINARY
 // =============================
-//const UPLOAD_DIR = path.resolve('./uploads');
-//if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  console.log('📁 Carpeta "uploads" creada en', UPLOAD_DIR);
-}
-
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'products', // Nombre de la carpeta en Cloudinary
+    allowed_formats: ['jpeg', 'png', 'jpg', 'webp'],
+    transformation: [{ width: 800, height: 800, crop: 'limit' }],
+  } as any,
+});
+
 const upload = multer({ storage });
 
 // =============================
@@ -196,10 +193,12 @@ app.post(
   async (req: Request, res: Response) => {
     try {
       const { name, price, description } = req.body;
-      const imageUrl = req.file
-      ? `${BASE_URL}/uploads/${req.file.filename}`
-      : `${BASE_URL}/uploads/default.png`;
 
+      // La URL ahora viene directamente de Cloudinary
+      if (!req.file) {
+        return res.status(400).json({ error: 'La imagen es requerida' });
+      }
+      const imageUrl = req.file.path;
 
       const product = await prisma.product.create({
         data: {
@@ -210,22 +209,13 @@ app.post(
         },
       });
 
-      res.json(product);
+      res.status(201).json(product);
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Error al crear producto' });
     }
   }
 );
-
-// =============================
-// 📤 ARCHIVOS ESTÁTICOS
-// =============================
-//app.use('/uploads', express.static(UPLOAD_DIR));
-// 📤 Servir correctamente las imágenes (funciona en Railway y local)
-const uploadsPath = path.join(process.cwd(), 'uploads');
-app.use('/uploads', express.static(uploadsPath));
-
 
 // =============================
 // 🚀 INICIO DEL SERVIDOR
