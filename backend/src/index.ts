@@ -80,8 +80,14 @@ app.use(
 // =============================
 // 📁 SUBIDA DE IMÁGENES
 // =============================
-const UPLOAD_DIR = path.resolve('./uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
+//const UPLOAD_DIR = path.resolve('./uploads');
+//if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  console.log('📁 Carpeta "uploads" creada en', UPLOAD_DIR);
+}
+
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
@@ -215,7 +221,11 @@ app.post(
 // =============================
 // 📤 ARCHIVOS ESTÁTICOS
 // =============================
-app.use('/uploads', express.static(UPLOAD_DIR));
+//app.use('/uploads', express.static(UPLOAD_DIR));
+// 📤 Servir correctamente las imágenes (funciona en Railway y local)
+const uploadsPath = path.join(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadsPath));
+
 
 // =============================
 // 🚀 INICIO DEL SERVIDOR
