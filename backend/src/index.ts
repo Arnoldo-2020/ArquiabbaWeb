@@ -16,6 +16,12 @@ import { prisma } from './db';
 // =============================
 const app = express();
 const PORT = process.env.PORT || 3000;
+const BASE_URL =
+  process.env.BASE_URL ||
+  (process.env.NODE_ENV === 'production'
+    ? 'https://arquibabbaweb-production.up.railway.app'
+    : `http://localhost:${PORT}`);
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -185,8 +191,9 @@ app.post(
     try {
       const { name, price, description } = req.body;
       const imageUrl = req.file
-        ? `/uploads/${req.file.filename}`
-        : '/uploads/default.png';
+      ? `${BASE_URL}/uploads/${req.file.filename}`
+      : `${BASE_URL}/uploads/default.png`;
+
 
       const product = await prisma.product.create({
         data: {
