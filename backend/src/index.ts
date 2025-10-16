@@ -6,7 +6,7 @@ import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import { createClient } from 'redis';
-import RedisStore from 'connect-redis';
+import * as connectRedis from 'connect-redis';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -38,18 +38,31 @@ const CSRF_SECRET = process.env.CSRF_SECRET || 'super-secret-key-change-me-in-pr
 
 app.set('trust proxy', 1);
 
+// --- Configuración de CORS Corregida ---
 const corsOptions: CorsOptions = {
+  // Orígenes permitidos. El valor de FRONT_ORIGIN se toma de tus variables de entorno.
   origin: [FRONT_ORIGIN, 'http://localhost:4200'],
+  
+  // Permite que el navegador envíe cookies y cabeceras de autorización.
   credentials: true,
+  
+  // Cabeceras personalizadas que tu aplicación utiliza y deben ser permitidas.
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'x-csrf-token' // ¡Esta es la cabecera clave que faltaba!
+  ],
+  
+  // Métodos HTTP permitidos por tu API.
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 };
 
 app.use(cors(corsOptions));
 
-
-
+// Es buena práctica que las peticiones OPTIONS respondan rápido.
+app.options('*', cors(corsOptions)); 
 
 //app.use(helmet());
-
 app.use(rateLimit({ windowMs: 60_000, max: 120 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -60,17 +73,33 @@ app.use(cookieParser());
  * Configuración de Sesión con Redis
  * ============================
  */
-const redisClient = createClient({ url: process.env.REDIS_URL });
-const RedisStoreClass = RedisStore(session);
-const redisStore = new RedisStoreClass({ client: redisClient, prefix: 'myapp:' });
 
+// 1. Usa la importación por defecto estándar. Es la forma correcta.
+import RedisStore from 'connect-redis';
+
+// 2. Crea el cliente de Redis y conéctalo.
+const redisClient = createClient({ url: process.env.REDIS_URL });
+redisClient.connect().catch(console.error);
+
+// 3. Instancia la tienda directamente.
+const redisStore = new RedisStore({
+    client: redisClient,
+    prefix: 'myapp:',
+});
+
+// 4. Usamos la tienda en el middleware de la sesión (sin cambios aquí)
 app.use(
   session({
     store: redisStore,
     secret: process.env.SESSION_SECRET || 'change-me-to-a-strong-secret',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: true, httpOnly: true, sameSite: 'none', maxAge: 24 * 60 * 60 * 1000 },
+    cookie: { 
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true, 
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 24 * 60 * 60 * 1000 
+    },
   })
 );
 
