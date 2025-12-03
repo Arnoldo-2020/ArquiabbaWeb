@@ -27,43 +27,52 @@ ion-content {
   }
 }
 
-.detail-info {
 
-  position: relative;
-  background: transparent;
-  z-index: 10;
+.detail-info {
+  background-color: #f8f9fa;
+  border-radius: 24px;
+  padding: 24px;
+  margin-top: 0;
+
+  border: 1px solid rgba(0,0,0,0.03);
 }
 
 .title {
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   font-weight: 800;
   color: #1a1a1a;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   line-height: 1.2;
 }
 
 .price {
-  font-size: 1.4rem;
-  font-weight: 600;
+  font-size: 1.8rem;
+  font-weight: 700;
   color: var(--ion-color-primary);
   margin-top: 0;
+  margin-bottom: 16px;
+  display: block;
 }
 
 .divider {
   height: 1px;
-  background: #f0f0f0;
-  margin: 20px 0;
+  background: #e0e0e0;
+  margin: 16px 0;
+  opacity: 0.6;
 }
 
 h3 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #555;
-  margin-bottom: 8px;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: #888;
+  margin-bottom: 12px;
+  margin-top: 0;
 }
 
 .description {
-  font-size: 1rem;
+  font-size: 0.95rem;
   line-height: 1.6;
-  color: #666;
+  color: #444;
 }
