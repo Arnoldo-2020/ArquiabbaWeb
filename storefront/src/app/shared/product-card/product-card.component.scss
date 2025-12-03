@@ -1,6 +1,58 @@
-:host { display:block; }
-    .card { border-radius: 16px; overflow: hidden; }
-    .image-wrapper { aspect-ratio: 4/3; overflow: hidden; }
-    .image-wrapper ion-img { width: 100%; height: 100%; object-fit: cover; display:block; }
-    .name { font-weight: 600; margin-top: .25rem; font-size: 1.05rem; opacity: .95; }
-    .price { margin: .25rem 0 .5rem; font-size: 1rem; }
+:host {
+  display: block;
+}
+
+.card {
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff; // Fondo blanco por si la imagen tiene transparencias
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05); // Sombra sutil moderna
+  transition: transform 0.2s ease;
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.image-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1/1; // Cambiamos a cuadrado (1/1) que suele ir mejor para productos
+  overflow: hidden;
+  background-color: #f9f9f9; // Un gris muy clarito de fondo
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px; // Un poco de aire para que la imagen no toque los bordes
+}
+
+.image-wrapper ion-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain; // <--- LA CLAVE: Muestra la imagen entera
+  display: block;
+}
+
+ion-card-content {
+  padding-top: 10px;
+}
+
+.name {
+  font-weight: 700;
+  margin-top: 0.25rem;
+  font-size: 1.05rem;
+  opacity: 0.95;
+  color: #333;
+  // Opcional: Limitar a 2 líneas si el nombre es muy largo
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.price {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ion-color-primary);
+}

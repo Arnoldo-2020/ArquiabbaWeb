@@ -1,0 +1,36 @@
+<ion-header class="ion-no-border">
+  <ion-toolbar>
+    <ion-buttons slot="end">
+      <ion-button (click)="close()" color="medium">
+        <ion-icon name="close-circle" size="large"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+
+  <div class="detail-image-wrapper">
+    <ion-img [src]="product.imageUrl" [alt]="product.name"></ion-img>
+  </div>
+
+  <div class="detail-info">
+    <h1 class="title">{{ product.name }}</h1>
+    <h2 class="price">€{{ product.price.toFixed(2) }}</h2>
+
+    <div class="divider"></div>
+
+    <h3>Descripción</h3>
+    <p class="description">
+      {{ product.description || 'Este producto no tiene una descripción detallada.' }}
+    </p>
+  </div>
+</ion-content>
+
+<ion-footer class="ion-no-border">
+  <ion-toolbar class="ion-padding">
+    <ion-button expand="block" shape="round" size="large" (click)="addToCart()">
+      Añadir al Carrito
+    </ion-button>
+  </ion-toolbar>
+</ion-footer>
