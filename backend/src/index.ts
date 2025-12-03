@@ -56,20 +56,30 @@ declare module 'express-session' {
 }
 
 // --- CORS ---
+const allowedOrigins = [
+  'http://localhost:4200',                
+  'http://localhost:8100',                
+  'https://arquiabba-web.vercel.app',     
+  'https://arquiabbaweb.vercel.app',     
+  'https://arquiabba-web.onrender.com'    
+];
+
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Permitir peticiones sin origen (como Postman o Apps móviles nativas)
       if (!origin) return callback(null, true);
 
-      if (origin.includes('localhost') || origin.includes('.vercel.app')) {
-        return callback(null, true);
+      if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('.vercel.app')) {
+        callback(null, true);
+      } else {
+        console.log('Bloqueado por CORS:', origin); // Log para depurar si falla otro
+        callback(new Error('No permitido por CORS'));
       }
-
-      console.log('Bloqueado por CORS:', origin);
-      
-      callback(new Error('No permitido por CORS'));
     },
-    credentials: true,
+    credentials: true, // Importante para las cookies de sesión
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
   })
 );
 
