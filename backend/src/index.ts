@@ -308,6 +308,11 @@ async function startServer() {
   }
 }
 
+// --- HEALTH CHECK ---
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 startServer();
 
 // --- CIERRE ---
