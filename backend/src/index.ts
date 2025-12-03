@@ -302,7 +302,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/crear-admin', async (req, res) => {
   try {
     const email = 'mayita@tu-dominio.com'; 
-    const password = 'password123';        
+    const password = 'EurekaGuanare.1';        
     
     const passwordHash = await bcrypt.hash(password, 10);
 
