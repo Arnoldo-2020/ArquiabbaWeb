@@ -58,12 +58,17 @@ declare module 'express-session' {
 // --- CORS ---
 app.use(
   cors({
-    origin: [
-      process.env.FRONT_ORIGIN || 'http://localhost:4200',
-      'http://localhost:8100',
-      'https://arquiabba-web.vercel.app',
-      'https://arquiabbaweb.vercel.app'
-    ],
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+
+      if (origin.includes('localhost') || origin.includes('.vercel.app')) {
+        return callback(null, true);
+      }
+
+      console.log('Bloqueado por CORS:', origin);
+      
+      callback(new Error('No permitido por CORS'));
+    },
     credentials: true,
   })
 );
