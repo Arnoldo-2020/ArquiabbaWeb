@@ -294,6 +294,29 @@ app.put(
   }
 );
 
+// --- CREAR ADMIN ---
+app.get('/api/crear-admin', async (req, res) => {
+  try {
+    const email = 'mayita@tu-dominio.com'; 
+    const password = 'password123';        
+    
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        email: email,
+        passwordHash: passwordHash,
+        role: 'ADMIN',
+      }
+    });
+    
+    res.json({ message: '¡Usuario Admin creado con éxito!', user });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al crear usuario (¿Quizás ya existe?)', detais: error });
+  }
+});
+
 // --- INICIO SERVIDOR ---
 async function startServer() {
   try {
