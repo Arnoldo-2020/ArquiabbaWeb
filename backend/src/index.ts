@@ -23,7 +23,6 @@ app.use(cookieParser());
 // --- CONFIGURACION REDIS ---
 const redisUrl = process.env.REDIS_URL;
 
-// Debug para verificar conexion en Render
 console.log('--- DEBUG REDIS ---');
 console.log('REDIS_URL detectada:', !!redisUrl);
 
@@ -55,29 +54,29 @@ declare module 'express-session' {
   }
 }
 
-// --- CORS ---
+// --- CONFIGURACION CORS ---
 const allowedOrigins = [
-  'http://localhost:4200',                
-  'http://localhost:8100',                
-  'https://arquiabba-web.vercel.app',     
-  'https://arquiabbaweb.vercel.app',     
-  'https://arquiabba-web.onrender.com'    
+  'http://localhost:4200',
+  'http://localhost:8100',
+  'https://arquiabba-web.vercel.app',
+  'https://arquiabbaweb.vercel.app',
+  'https://arquiabbaweb.onrender.com',
+  'https://arquiabba-web.onrender.com'
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Permitir peticiones sin origen (como Postman o Apps móviles nativas)
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('.vercel.app')) {
         callback(null, true);
       } else {
-        console.log('Bloqueado por CORS:', origin); // Log para depurar si falla otro
+        console.log('Bloqueado por CORS:', origin);
         callback(new Error('No permitido por CORS'));
       }
     },
-    credentials: true, // Importante para las cookies de sesión
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
   })
@@ -294,6 +293,11 @@ app.put(
   }
 );
 
+// --- HEALTH CHECK (NECESARIO PARA RENDER) ---
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 // --- CREAR ADMIN ---
 app.get('/api/crear-admin', async (req, res) => {
   try {
@@ -306,14 +310,14 @@ app.get('/api/crear-admin', async (req, res) => {
       data: {
         email: email,
         passwordHash: passwordHash,
-        role: 'ADMIN',
+        role: 'ADMIN', 
       }
     });
     
-    res.json({ message: '¡Usuario Admin creado con éxito!', user });
+    res.json({ message: 'Usuario Admin creado con exito!', user });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Error al crear usuario (¿Quizás ya existe?)', detais: error });
+    res.status(500).json({ error: 'Error al crear usuario', details: error });
   }
 });
 
@@ -330,11 +334,6 @@ async function startServer() {
     process.exit(1);
   }
 }
-
-// --- HEALTH CHECK ---
-app.get('/api/health', (req, res) => {
-  res.status(200).send('OK');
-});
 
 startServer();
 
